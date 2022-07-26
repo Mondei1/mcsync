@@ -1,26 +1,34 @@
+use log::info;
 use ssh_key::{
-    private::{KeypairData, PrivateKey, RsaKeypair, Ed25519Keypair},
+    private::{KeypairData, PrivateKey, Ed25519Keypair},
     rand_core::OsRng, PublicKey,
 };
 
-use std::env;
 use nickel::Nickel;
-use paris::Logger;
 
-pub struct HttpHandler {
-    server: Nickel
+use crate::database::{Database};
+
+pub struct HttpHandler<'a> {
+    server: Nickel,
+    database: &'a Database
 }
 
-impl HttpHandler {
-    pub fn new() -> Self {
+impl<'a> HttpHandler<'a> {
+    pub fn new(database: &'a mut Database) -> Self {
         let mut server = Nickel::new();
+        let mut db = database.to_owned();
         
         server.utilize(middleware! { |request|
-            let mut logger = Logger::new();
-            logger.info(format!("{} -- {} {}", request.origin.remote_addr.ip().to_string(), request.origin.method, request.origin.uri));
+            let ip = request.origin.remote_addr.ip().to_string();
+            // let result = (&db).seen_client(ip.as_str());
+            info!("{} -- {} {}", ip, request.origin.method, request.origin.uri);
         });
 
         server.utilize(router! {
+            get "/" => | req, res | {
+                "ok"
+            }
+
             get "/ssh-access" => | req, res | {
                 let key = Ed25519Keypair::random(&mut OsRng);
                 let key_clone = key.clone();
@@ -37,11 +45,11 @@ impl HttpHandler {
             }
 
             get "**" => |req, res| {
-                req.origin.remote_addr.ip().to_string()
+                "404 not found"
             }
         });
 
-        Self { server }
+        Self { server, database }
     }
 
     pub fn listen(self) {

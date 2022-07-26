@@ -1,155 +1,110 @@
 #![feature(decl_macro)]
+#![feature(iter_advance_by)]
 
 #[macro_use]
 extern crate nickel;
 
+mod database;
+mod dns;
+mod docker;
 mod http;
 mod routines;
 
-use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
+use std::process::exit;
 use std::thread;
 
-use bollard::container::{ListContainersOptions, InspectContainerOptions, StopContainerOptions};
+use database::Database;
+use dns::DNSManager;
+use docker::DockerManager;
+
 use lazy_static::lazy_static;
-use log::{info, warn};
 use routines::accept::Accept;
+use routines::remove::RemoveUser;
 
-use paris::{error, Logger};
-use serde::Deserialize;
-
-use bollard::Docker;
+use paris::{error, info};
+use shadow_rs::{shadow, Format};
 
 lazy_static! {
-    pub static ref FILE_DNS: String = String::new();
     pub static ref FILE_VPN: String = String::new();
-    pub static ref DOCKER_PATH: String = match std::env::var("DOCKER_SOCKET") {
-        Ok(d) => format!("unix://{}", d),
-        Err(_) => {
-            warn!(
-                "Fallback to /var/run/docker.socket because DOCKER_SOCKET has not been specified."
-            );
-            String::from("unix:///var/run/docker.sock")
-        }
-    };
 }
 
-#[derive(Debug, Deserialize)]
-struct DockerVersion {
-    ServerVersion: String,
-}
-
-struct PingHandshake {
-    version: usize,
-    server_address: String,
-    server_port: u8,
-    next_state: usize,
-}
+shadow!(build);
 
 #[tokio::main]
 async fn main() {
-    let mut current_host: String = String::new();
-    let mut log = Logger::new();
-
-    // No one is hosting right now.
-    if current_host == "" {}
-
-    let docker = match Docker::connect_with_socket_defaults() {
-        Ok(d) => d,
-        Err(error) => {
-            error!("Unable to connect with Docker: {}", error);
-            std::process::exit(1);
+    info!(
+        "Run mcsync server version {} ({})",
+        build::PKG_VERSION,
+        if shadow_rs::is_debug() {
+            "DEBUG"
+        } else {
+            "PROD"
         }
-    };
+    );
+    info!(
+        "Compiled {} using branch {} ({})",
+        shadow_rs::DateTime::now().human_format(),
+        shadow_rs::branch(),
+        build::SHORT_COMMIT
+    );
 
-    let mut list_container_filters = HashMap::new();
-    list_container_filters.insert("status", vec!["running"]);
+    //let signals = Signals::new(&[SIGTERM, SIGINT]);
 
-    let containers = &docker
-        .list_containers(Some(ListContainersOptions {
-            all: true,
-            filters: list_container_filters,
-            ..Default::default()
-        }))
+    let mut database = Database::new();
+    database.flush();
+
+    let docker_manager = DockerManager::new().await;
+    let dns_manager = DNSManager::new(docker_manager.clone());
+
+    /*if signals.is_ok() {
+        thread::spawn(move || async move {
+            for sig in signals.unwrap().forever() {
+                info!("Goodbye!");
+
+                std::process::exit(sig);
+            }
+        });
+    } else {
+        error!("Couldn't create signal catcher: {}", signals.unwrap_err());
+    }*/
+
+    let own_ip = docker_manager
+        .get_container_ip(docker_manager.get_dns_container().await.unwrap())
         .await
         .unwrap();
 
-    for container in containers {
-        let detail = docker
-            .inspect_container(
-                container.id.as_ref().unwrap(),
-                None::<InspectContainerOptions>,
-            )
-            .await
-            .unwrap();
-        
-        let ip_address = match detail.network_settings {
-            None => {
-                warn!("Couldn't retrive information about {}", container.id.as_ref().unwrap());
-                continue;
-            },
-            Some(settings) => {
-                match settings.networks {
-                    None => {
-                        warn!("Couldn't retrive Docker networks from {}", container.id.as_ref().unwrap());
-                        continue;
-                    },
-                    Some(networks) => {
-                        match networks.get("mcsync") {
-                            None => {
-                                warn!("Couldn't find network \"mcsync\" for container {}", container.id.as_ref().unwrap());
-                                continue;
-                            },
-                            Some(network_detail) => {
-                                network_detail.ip_address.clone().unwrap()
-                            }
-                        }
-                    }
-                }
-            }
-        };
-
-        if detail.name.as_ref().unwrap() == "/mcsync-dns" {
-            let stop = docker.stop_container(detail.id.as_ref().unwrap(), Some(StopContainerOptions {
-                ..Default::default()
-            })).await;
-
-            match stop {
-                Ok(_) => {
-                    info!("DNS server stopped.");
-                },
-                Err(error) => {
-                    error!("Couldn't stop DNS server: {}", error);
-                }
-            }
-        }
-
-        println!("{}: {}", detail.name.unwrap(), ip_address);
-    }
-
-    // success!("Connected with Docker (version {})", serde_json::from_str::<DockerVersion>(docker_client.get_version_info().unwrap().as_str()).unwrap().ServerVersion);
+    println!("DNS IP is {}", own_ip);
 
     let args: Vec<String> = std::env::args().collect();
     let subroutine = args.get(1);
 
+    dns_manager.set_or_update_record("testworld", "192.168.10.24");
+    dns_manager.restart_dns().await;
+
     if subroutine.is_some() {
-        match subroutine.unwrap().as_str() {
+        match subroutine.unwrap().to_lowercase().as_str() {
             "accept" => {
-                Accept::execute();
+                Accept::new(&mut database).execute();
+            }
+            "remove" => {
+                RemoveUser::new(&mut database).execute();
             }
             _ => {
-                log.error("Unknown argument");
+                error!("Unknown argument");
             }
         }
-    } else {
-        log.log("Run mcsync' server version 0.1.0-DEV");
 
-        let http_server = http::handler::HttpHandler::new();
-        http_server.listen();
+        database.flush();
 
-        fake_status_server();
+        exit(0);
     }
+
+    let http_server = http::handler::HttpHandler::new(&mut database);
+    http_server.listen();
+
+    // fake_status_server();
 }
 
 fn fake_status_server() {

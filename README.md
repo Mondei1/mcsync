@@ -253,7 +253,7 @@ This configuration consists of two subnets:
 * `192.168.10.0/24` is reserved for all participants.
 * `192.168.11.0/24` is reserved for all tools.
 
-If those subnets are colliding with any of your subnets, change them. Just make sure that the second subnet needs to have at least 4 hosts.
+If those subnets are colliding with any of your subnets, change them. Just make sure that the second subnet needs to have at least 4 hosts. **Just make sure you'll NEVER change you mask later.** At the time of writing `mcsync` does not support changing IP-address once they have been assgined.
 
 Iptables will route traffic from the second to the first subnet.
 
