@@ -1,12 +1,15 @@
-use std::{fs::File, io::{Read, Error, Write}, time::{SystemTime, UNIX_EPOCH}};
+use std::{fs::File, io::{Read, Error, Write}, time::{SystemTime, UNIX_EPOCH}, borrow::BorrowMut, vec};
 
-use log::warn;
-use paris::{info, error, success};
+use paris::{info, error, success, warn};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone)]
 pub struct Database {
     path: String,
+
+    /// Stores the fingerprint of the latest written database to prevent flushing
+    /// the same contents all the time.
+    fingerprint: String,
     data: DatabaseFormat
 }
 
@@ -61,17 +64,28 @@ impl Database {
                     std::process::exit(1);
                 }
 
-                success!("Read database ({} bytes)", read_operation.unwrap());
+                let size = read_operation.unwrap();
+                success!("Read database ({} bytes)", size);
 
-                let parsed = match serde_json::from_str::<DatabaseFormat>(&contents) {
-                    Ok(o) => o,
-                    Err(error) => {
-                        error!("Invalid json syntax: {}", error);
-                        std::process::exit(1);
+                // Empty file
+                if size == 0 {
+                    DatabaseFormat {
+                        version: 1,
+                        client: vec![],
+                        synced: vec![]
                     }
-                };
+                } else {
+                    let parsed = match serde_json::from_str::<DatabaseFormat>(&contents) {
+                        Ok(o) => o,
+                        Err(error) => {
+                            error!("Invalid json syntax: {}", error);
+                            std::process::exit(1);
+                        }
+                    };
+                    
+                    parsed
+                }
                 
-                parsed
             },
             Err(error) => {
                 error!("Couldn't open file: {}", error);
@@ -79,7 +93,7 @@ impl Database {
             }
         };
 
-        Self { path, data }
+        Self { path, data, fingerprint: String::new() }
     }
 
     pub fn new_client(&mut self, client: DatabaseClient) {
@@ -88,7 +102,7 @@ impl Database {
 
     pub fn remove_client(&mut self, name: &str) -> Option<DatabaseClient> {
         let position = self.data.client.iter().position(|c| c.name == name);
-        let client = self.get_client(name);
+        let client = self.get_client_by_name(name);
 
         match position {
             Some(pos) => {
@@ -105,9 +119,12 @@ impl Database {
 
     /// Call once you have seen the client.
     pub fn seen_client(&mut self, ip: &str) -> () {
-        match self.data.client.iter().find(|c| c.ipv4_address == ip).to_owned() {
-            Some(mut client) => {
-                client.to_owned().last_seen = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        match self.data.client.iter().position(|c| c.ipv4_address == ip) {
+            Some(pos) => {
+                let mut changed_user = self.get_clients().get(pos).unwrap().clone();
+                changed_user.last_seen = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+
+                let _ = std::mem::replace(&mut self.data.client[pos], changed_user);
             },
             None => {
                 warn!("Unknown client has been seen! IP: {}", ip);
@@ -119,27 +136,47 @@ impl Database {
         self.data.client.clone()
     }
 
-    pub fn get_client(&self, name: &str) -> Option<DatabaseClient> {
+    pub fn get_client_by_name(&self, name: &str) -> Option<&DatabaseClient> {
         match self.data.client.iter().find(|c| c.name == name).to_owned() {
             Some(value) => {
-                Some(value.to_owned())
+                Some(value)
             },
             None => { None }
         }
     }
 
-    /// Writes current state of database to disk.
-    pub fn flush(&self) -> Option<()> {
-        match File::create(&self.path) {
-            Ok(mut file) => {
-                match serde_json::to_string_pretty(&self.data) {
-                    Ok(pretty) => {
+    pub fn get_client_by_ip(&self, ip: &str) -> Option<&DatabaseClient> {
+        match self.data.client.iter().find(|c| c.ipv4_address == ip).to_owned() {
+            Some(value) => {
+                Some(value)
+            },
+            None => { None }
+        }
+    }
 
+    pub fn get_data(&self) -> &DatabaseFormat {
+        &self.data
+    }
+
+    /// Writes current state of database to disk. Only if config changed since last write.
+    pub fn flush(&mut self) -> Option<()> {
+        match serde_json::to_string_pretty(&self.data) {
+            Ok(pretty) => {
+                let new_fingerprint = sha256::digest(&pretty);
+                if new_fingerprint == self.fingerprint {
+                    return None;
+                }
+
+                self.fingerprint = new_fingerprint;
+
+                match File::create(&self.path) {
+                    Ok(mut file) => {
                         match file.write_all(pretty.as_bytes()) {
                             Ok(_) => {
                                 match file.flush() {
                                     Ok(_) => {
-                                        success!("Database has been written to disk!");
+                                        info!("Database has been written to disk!");
+                                        Some(())
                                     },
                                     Err(error) => {
                                         error!("Error on flushing buffer to file: {}", error);
@@ -153,19 +190,21 @@ impl Database {
                                 return None;
                             }
                         }
+                    }
 
-                        Some(())
-                    },
                     Err(error) => {
-                        error!("Couldn't create JSON string: {}", error);
+                        error!("Database file ({}) couldn't be opened: {}", self.path, error);
                         None
                     }
                 }
             },
             Err(error) => {
-                error!("Database file ({}) couldn't be opened: {}", self.path, error);
+                error!("Couldn't create JSON string: {}", error);
                 None
+
             }
-        }
+        };
+
+        None
     }
 }

@@ -63,7 +63,7 @@ impl DockerManager {
                 None => { continue; },
                 Some(names) => {
                     for container_name in names {
-                        if container_name.contains(&name.to_string()) {
+                        if container_name.contains(&name.to_string()) && container_name.contains("mcsync") {
                             return Some(container.clone());
                         }
                     }

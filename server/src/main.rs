@@ -8,6 +8,7 @@ mod database;
 mod dns;
 mod docker;
 mod http;
+mod wireguard;
 mod routines;
 
 use std::io::{Read, Write};
@@ -44,7 +45,7 @@ async fn main() {
         }
     );
     info!(
-        "Compiled {} using branch {} ({})",
+        "Compiled on {} using {} branch ({})",
         shadow_rs::DateTime::now().human_format(),
         shadow_rs::branch(),
         build::SHORT_COMMIT
@@ -55,8 +56,11 @@ async fn main() {
     let mut database = Database::new();
     database.flush();
 
+    info!("Connect with Docker ...");
     let docker_manager = DockerManager::new().await;
-    let dns_manager = DNSManager::new(docker_manager.clone());
+    let mut dns_manager = DNSManager::new(docker_manager.clone());
+
+    dns_manager.setup_service_domains().await;
 
     /*if signals.is_ok() {
         thread::spawn(move || async move {
@@ -70,18 +74,27 @@ async fn main() {
         error!("Couldn't create signal catcher: {}", signals.unwrap_err());
     }*/
 
-    let own_ip = docker_manager
-        .get_container_ip(docker_manager.get_dns_container().await.unwrap())
-        .await
-        .unwrap();
+    match docker_manager.get_dns_container().await {
+        Some(dns) => {
+            let own_ip = docker_manager
+                .get_container_ip(dns)
+                .await
+                .unwrap();
 
-    println!("DNS IP is {}", own_ip);
+            println!("DNS IP is {}", own_ip);
+        },
+        None => {
+            error!("Cannot find DNS container. Did you rename your containers? The name has to contain \"dns\" somewhere e.g. \"mcsync-dns-1\".");
+            exit(1);
+        }
+    }
 
     let args: Vec<String> = std::env::args().collect();
     let subroutine = args.get(1);
 
-    dns_manager.set_or_update_record("testworld", "192.168.10.24");
-    dns_manager.restart_dns().await;
+    // dns_manager.set_or_update_record("testworld", "192.168.10.24");
+    // dns_manager.remove_record("testworld");
+    // dns_manager.restart_dns().await;
 
     if subroutine.is_some() {
         match subroutine.unwrap().to_lowercase().as_str() {
@@ -101,7 +114,7 @@ async fn main() {
         exit(0);
     }
 
-    let http_server = http::handler::HttpHandler::new(&mut database);
+    let http_server = http::handler::HttpHandler::new(database);
     http_server.listen();
 
     // fake_status_server();

@@ -164,6 +164,7 @@ docker exec -it mcsync-server-1 /bin/mcsync-server accept "Joe Doe" < /path/to/j
     "version": 1,
     "endpoint": "example.com:51820",
     "public_key": "VZBslaLy/AXCqk0rXq8Ip/+p7a/RyrG+H/WQ9ZeV8x8=",
+    "psk": "Hx4EUfnSED/J409OEKw3jiZQUHK3KsfR2VfgQHYaJqs=",
     "user_subnet": "192.168.10.0/24",
     "tool_subnet": "192.168.11.0/24",
     "ipv4_address": "192.168.10.3",

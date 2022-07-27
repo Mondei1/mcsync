@@ -1,27 +1,40 @@
-use log::info;
+use paris::info;
+
 use ssh_key::{
-    private::{KeypairData, PrivateKey, Ed25519Keypair},
-    rand_core::OsRng, PublicKey,
+    private::{Ed25519Keypair, KeypairData, PrivateKey},
+    rand_core::OsRng,
+    PublicKey,
 };
 
 use nickel::Nickel;
 
-use crate::database::{Database};
+use crate::database::Database;
 
-pub struct HttpHandler<'a> {
+pub struct HttpHandler {
     server: Nickel,
-    database: &'a Database
+    database: Database,
 }
 
-impl<'a> HttpHandler<'a> {
-    pub fn new(database: &'a mut Database) -> Self {
+impl HttpHandler {
+    pub fn new(database: Database) -> Self {
         let mut server = Nickel::new();
-        let mut db = database.to_owned();
-        
+        let db = database.clone();
+
         server.utilize(middleware! { |request|
+            let mut db_clone = db.clone();
+
             let ip = request.origin.remote_addr.ip().to_string();
-            // let result = (&db).seen_client(ip.as_str());
-            info!("{} -- {} {}", ip, request.origin.method, request.origin.uri);
+            db_clone.seen_client(ip.as_str());
+            db_clone.flush();
+
+            let client = db_clone.get_client_by_ip(&ip);
+
+            info!("{} ({}) -- {} {}", 
+                ip,
+                if client.is_some() { client.unwrap().name.clone() } else { String::from("") },
+                request.origin.method,
+                request.origin.uri
+            );
         });
 
         server.utilize(router! {
