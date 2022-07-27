@@ -1,12 +1,12 @@
 # mcsync
-**Synchronize your local minecraft server data with another server.**
+**Tunnel & share your Minecraft server with friends.**
 
-**DISCLAIMER:** This is mostly a concept at this point. That might change in the future but for now, don't use it yet.
+**DISCLAIMER:** This is mostly a concept at this point. Things might change in the future but for now, don't use it yet.
 
-`mcsync` is not just a program, it rather consists of a custom client and server and a DNS, SSH & WireGuard server. It has been developed with Docker in mind. All the custom parts were built using **Rust**.
+`mcsync` is not just a program, it rather consists of a custom client & server, a DNS, SSH & WireGuard server. It has been developed with Docker in mind. All the custom parts were built using **Rust**.
 
 ## Features
-* Tunnel minecraft server to all participant *(using WireGuard)*
+* Tunnel minecraft server to all participants *(using WireGuard)*
 * Sync server files to remote server.
   * This allows all other players to start the server on there own, providing 100 % uptime if needed.
 * Create as many servers as you please.
@@ -14,7 +14,7 @@
 * Custom DNS resolution
   * Lets say you have an server called `survival1` all members can connect to `survival1.mc` as domain.
 
-This works with all servers and versions *(Vanilla, Spigot, Forge, etc)*.
+This works with all Minecraft servers and versions *(Vanilla, Spigot, Forge, etc)*.
 
 ## Use case
 I initially wrote this program to sync my Minecraft server to my less powerful vServer which isn't capable of running a full instance of Minecraft. But when hosting a Minecraft server on your own machine which is not turned on all the time (unlike a server), other people will not be able to play on that server.
@@ -112,7 +112,7 @@ docker network create --subnet 192.168.11.0/24 mcsync
 # Usage
 So, you got mcsync up and running on your server and your client works as well.
 
-## Neu user
+## Add new user
 Your server is working and now you want some players on your server.
 
 ### Client
@@ -127,8 +127,6 @@ mcsync client_info > joe_doe.mcsc     # .MCSync Client = mcsc
 {
   "version": 1,
   "wireguard_pub": "VZBslaLy/AXCqk0rXq8Ip/+p7a/RyrG+H/WQ9ZeV8x8=",
-
-  // ED25519 public key
   "ssh_pub": "AAAAC3NzaC1lZDI1NTE5AAAAIAzLg1ogXeY4VBch6uEcgNso26HowdmKpSNWwINSHQJd"
 }
 ```
@@ -243,7 +241,7 @@ This will generate a new file called `.sync` inside your minecraft server contai
   "server": "server_name",      // Name of server.
   "first_sync": 1656612770,     // Timestamp of first the sync. (no use but you can see your server getting older)
   "last_sync": 1656643855,      // Timestamp of last sync of your local copy.
-  "version": 1              // Version of mcsync that performed the last sync.
+  "version": 1                  // Version of mcsync that performed the last sync.
 }
 ```
 After executing that command, the entirety of this folder will be synced to your remote.
@@ -254,9 +252,7 @@ This configuration consists of two subnets:
 * `192.168.10.0/24` is reserved for all participants.
 * `192.168.11.0/24` is reserved for all tools.
 
-If those subnets are colliding with any of your subnets, change them. Just make sure that the second subnet needs to have at least 4 hosts. **Just make sure you'll NEVER change you mask later.** At the time of writing `mcsync` does not support changing IP-address once they have been assgined.
-
-Iptables will route traffic from the second to the first subnet.
+If those subnets are colliding with any of your subnets, change them. The second subnet needs to have at least 4 hosts. **Just make sure you'll NEVER change you mask later.** At the time of writing `mcsync` does not support changing IP-address once they have been assgined.
 
 ## Backstory
 You may remember the tool [Hamachi](https://vpn.net/). Back in the days, we used to use this program. We didn't knew how it worked, it was some kind of magic, but it allowed us to play Minecraft together. But this was years ago and now I know we achived this with using our own VPN. Yet, there was just one person who had the server. So when we wanted to play we had to wait for the hoster to be ready.
@@ -269,12 +265,23 @@ WireGuard is directly integrated into the Linux kernel or available as a kernel 
 `wireguard-go` is another official implementation of the WireGuard server which is slower than the kernel modules but it works everywhere. I plan to use the `wireguard-rs` implementation as soon as it's available on Windows.
 
 ## Why no OpenVPN?
-OpenVPN is a ...
-* **mess**: It would require a lot more effort to automatically setup the server and to keep an eye over the configuration.
+OpenVPN is ...
+* **a mess**: It would require a lot more effort to automatically setup the server and to keep an eye over the configuration.
 * **slow**: OpenVPN is way slower than WireGuard. Both in terms of bandwitdh and latency. Take a look [here](https://www.vpnranks.com/blog/wireguard-vs-openvpn/).
 * **bloated**: It supports far more ciphers than you actually need, which increases complexity and image size.
 
-I hope that covers it up. Yet, if there is the wish to implement OpenVPN too, then open an issue.
+I hope that covers it up. Yet, if there is any wish to implement OpenVPN too, then open an issue.
+
+# Upcoming 1.19.1 chat reporting
+As you may have noticed, there will soon be an update for Minecraft Java Edition that introduces a chat reporting feature to Minecraft.
+
+This change upsets many players and switching the server to **offline mode** is so far the only known way to turn off this system. This brings many disadvantages, such as username forgery and missing skin support.
+
+What does `mcsync` have to do with this? Well, since a whitelist system doesn't do anything useful *(since UUID don't really exist in offline mode)* you can use `mcsync` to protect your server from untrusted people. Only people who have joined your VPN tunnel can see & use your server. This is only practical for smaller servers.
+
+**It won't protect you from bad friends, as they can still fake usernames! But it can drastically reduce the number of potential bad actors.**
+
+To restore skins, use [SkinRestorer](https://www.spigotmc.org/resources/skinsrestorer.2124/) by SRTeam or something else.
 
 # Future plans
 While this project is still growing and at its beginning there are some things I'll like to add in the future:
@@ -282,7 +289,7 @@ While this project is still growing and at its beginning there are some things I
 * Central server which is hosted by me.
   * Easier to join other peoples private networks
   * Cheaper sync of your Minecraft worlds (E2E encrypted, 50 MB free maybe)
-  * Dashboard of basic activity
 * Client with GUI (using IMGui)
+* Dashboard
 
 *more coming soon*
