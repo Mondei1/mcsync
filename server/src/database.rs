@@ -1,4 +1,4 @@
-use std::{fs::File, io::{Read, Error, Write}, time::{SystemTime, UNIX_EPOCH}, borrow::BorrowMut, vec};
+use std::{fs::File, io::{Read, Error, Write}, time::{SystemTime, UNIX_EPOCH}, borrow::BorrowMut, vec, path::Path, process::exit};
 
 use paris::{info, error, success, warn};
 use serde::{Deserialize, Serialize};
@@ -16,8 +16,14 @@ pub struct Database {
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct DatabaseFormat {
     version: u16,
+    keys: DatabaseKeys,
     synced: Vec<DatabaseSynced>,
     client: Vec<DatabaseClient>
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct DatabaseKeys {
+    wg_private: String
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -33,6 +39,7 @@ pub struct DatabaseClient {
     pub(crate) ipv4_address: String,
     pub(crate) last_seen: u64,
     pub(crate) wg_public_key: String,
+    pub(crate) wg_psk: String,
     pub(crate) ssh_public_key: String
 }
 
@@ -54,6 +61,16 @@ impl Database {
             }
         };
 
+        if !Path::new(&path).exists() {
+            match File::create(&path) {
+                Ok(_) => {},
+                Err(error) => {
+                    error!("Couldn't create database file at {}: {}", &path, error);
+                    exit(1);
+                }
+            }
+        }
+
         let data = match File::open(&path) {
             Ok(mut data) => {
                 let mut contents = String::new();
@@ -65,12 +82,16 @@ impl Database {
                 }
 
                 let size = read_operation.unwrap();
-                success!("Read database ({} bytes)", size);
 
                 // Empty file
                 if size == 0 {
+                    let private_key = wireguard_keys::Privkey::generate();
+
                     DatabaseFormat {
                         version: 1,
+                        keys: DatabaseKeys {
+                            wg_private: private_key.to_base64()
+                        },
                         client: vec![],
                         synced: vec![]
                     }
@@ -88,7 +109,7 @@ impl Database {
                 
             },
             Err(error) => {
-                error!("Couldn't open file: {}", error);
+                error!("Couldn't open database file: {}", error);
                 std::process::exit(1);
             }
         };
@@ -158,6 +179,10 @@ impl Database {
         &self.data
     }
 
+    pub fn get_wireguard_private_key(&self) -> String {
+        self.data.keys.wg_private.clone()
+    }
+
     /// Writes current state of database to disk. Only if config changed since last write.
     pub fn flush(&mut self) -> Option<()> {
         match serde_json::to_string_pretty(&self.data) {
@@ -175,7 +200,7 @@ impl Database {
                             Ok(_) => {
                                 match file.flush() {
                                     Ok(_) => {
-                                        info!("Database has been written to disk!");
+                                        // We successfully wrote the database to disk.
                                         Some(())
                                     },
                                     Err(error) => {

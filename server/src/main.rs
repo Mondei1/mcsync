@@ -14,6 +14,7 @@ mod routines;
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::process::exit;
+use std::sync::{Mutex, Arc};
 use std::thread;
 
 use database::Database;
@@ -21,20 +22,79 @@ use dns::DNSManager;
 use docker::DockerManager;
 
 use lazy_static::lazy_static;
+use nickel::hyper::Url;
 use routines::accept::Accept;
 use routines::remove::RemoveUser;
 
 use paris::{error, info};
 use shadow_rs::{shadow, Format};
 
+use crate::wireguard::Wireguard;
+
 lazy_static! {
     pub static ref FILE_VPN: String = String::new();
+    pub static ref SILENT: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
 }
 
 shadow!(build);
 
 #[tokio::main]
 async fn main() {
+    let args: Vec<String> = std::env::args().collect();
+
+    if args.len() > 1 {
+        *SILENT.lock().unwrap() = true;
+    }
+
+    let mut database = Database::new();
+    let docker_manager = DockerManager::new().await;
+
+    let endpoint: String = match std::env::var("ENDPOINT") {
+        Ok(endpoint) => {
+            // We just pretent it's a http URL.
+            match Url::parse(&format!("http://{}", endpoint)) {
+                Ok(result) => {
+                    if result.port().is_none() {
+                        error!("You need to set a port in ENDPOINT. If you're not sure use 51820 as it's WireGuard's default port.");
+                        exit(1);
+                    }
+
+                    endpoint
+                },
+                Err(error) => {
+                    error!("Environment variable contains invalid address: {}", error);
+                    exit(1);
+                }
+            }
+        },
+        Err(_) => {
+            error!("You need to set the environment variable ENDPOINT which is an address ( [Domain OR IPv4]:PORT ) under which WireGuard is reachable by others.");
+            exit(1);
+        }
+    };
+
+    let mut vpn = Wireguard::new(database.clone(), endpoint);
+
+    let subroutine = args.get(1);
+
+    if subroutine.is_some() {
+        match subroutine.unwrap().to_lowercase().as_str() {
+            "accept" => {
+                Accept::new(&mut database, &mut vpn, &docker_manager).execute().await;
+            }
+            "remove" => {
+                RemoveUser::new(&mut database).execute();
+            }
+            _ => {
+                error!("Unknown argument");
+            }
+        }
+
+        database.flush();
+
+        exit(0);
+    }
+
     info!(
         "Run mcsync server version {} ({})",
         build::PKG_VERSION,
@@ -53,66 +113,9 @@ async fn main() {
 
     //let signals = Signals::new(&[SIGTERM, SIGINT]);
 
-    let mut database = Database::new();
-    database.flush();
-
-    info!("Connect with Docker ...");
-    let docker_manager = DockerManager::new().await;
+    
     let mut dns_manager = DNSManager::new(docker_manager.clone());
-
     dns_manager.setup_service_domains().await;
-
-    /*if signals.is_ok() {
-        thread::spawn(move || async move {
-            for sig in signals.unwrap().forever() {
-                info!("Goodbye!");
-
-                std::process::exit(sig);
-            }
-        });
-    } else {
-        error!("Couldn't create signal catcher: {}", signals.unwrap_err());
-    }*/
-
-    match docker_manager.get_dns_container().await {
-        Some(dns) => {
-            let own_ip = docker_manager
-                .get_container_ip(dns)
-                .await
-                .unwrap();
-
-            println!("DNS IP is {}", own_ip);
-        },
-        None => {
-            error!("Cannot find DNS container. Did you rename your containers? The name has to contain \"dns\" somewhere e.g. \"mcsync-dns-1\".");
-            exit(1);
-        }
-    }
-
-    let args: Vec<String> = std::env::args().collect();
-    let subroutine = args.get(1);
-
-    // dns_manager.set_or_update_record("testworld", "192.168.10.24");
-    // dns_manager.remove_record("testworld");
-    // dns_manager.restart_dns().await;
-
-    if subroutine.is_some() {
-        match subroutine.unwrap().to_lowercase().as_str() {
-            "accept" => {
-                Accept::new(&mut database).execute();
-            }
-            "remove" => {
-                RemoveUser::new(&mut database).execute();
-            }
-            _ => {
-                error!("Unknown argument");
-            }
-        }
-
-        database.flush();
-
-        exit(0);
-    }
 
     let http_server = http::handler::HttpHandler::new(database);
     http_server.listen();

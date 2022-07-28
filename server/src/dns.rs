@@ -1,3 +1,5 @@
+use std::path::Path;
+use std::process::exit;
 use std::str::FromStr;
 use std::{fs::File, io::Write, fs::remove_file, time::Duration};
 
@@ -5,11 +7,11 @@ use domain::base::iana::Class;
 use domain::base::{Dname, Rtype};
 use domain::base::octets::Octets512;
 use domain::rdata::A;
-use domain::resolv::{Resolver, StubResolver, stub::conf::{ResolvConf, ResolvOptions, ServerConf}};
-use log::{warn, RecordBuilder};
+use domain::resolv::{StubResolver, stub::conf::{ResolvConf, ResolvOptions, ServerConf}};
+use log::{warn};
 use paris::{error, info, success, log};
 
-use crate::{docker::DockerManager, routines::remove};
+use crate::{docker::DockerManager};
 
 pub struct DNSManager {
     docker_instance: DockerManager,
@@ -20,7 +22,14 @@ pub struct DNSManager {
 impl DNSManager {
     pub fn new(docker_instance: DockerManager) -> Self {
         let zone_dir = match std::env::var("DNS_ZONE_DIR") {
-            Ok(file_path) => file_path,
+            Ok(file_path) => {
+                if !Path::new(&file_path).exists() {
+                    error!("Directory {} in DNS_ZONE_DIR doesn't exist.", &file_path);
+                    exit(1);
+                }
+                
+                file_path
+            },
             Err(_) => {
                 info!("Fallback to /dns/mcsync.d/ because DNS_ZONE_DIR has not been specified.");
                 String::from("/dns/mcsync.d/")

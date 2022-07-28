@@ -52,7 +52,7 @@ services:
     image: masipcat/wireguard-go:latest
     networks:
       mcsync:
-        ipv4_address: 192.168.11.3
+        ipv4_address: 192.168.11.1
     cap_add:
      - NET_ADMIN
     sysctls:
@@ -75,7 +75,7 @@ services:
     image: lscr.io/linuxserver/openssh-server:latest
     networks:
       mcsync:
-        ipv4_address: 192.168.11.4
+        ipv4_address: 192.168.11.2
     hostname: ssh
     environment:
       - PUID=1000
@@ -93,7 +93,7 @@ services:
     image: mvance/unbound
     networks:
       mcsync:
-        ipv4_address: 192.168.11.5
+        ipv4_address: 192.168.11.3
     volumes:
       - ./dns:/opt/unbound/etc/unbound/
 
@@ -102,10 +102,15 @@ networks:
   mcsync:
     external: true
 ```
-Now you'll need to create the `mcsync` network:
+Now you'll need to create the `mcsync` network (see [Network structure](#network-structure) down below for more information):
 ```sh
-docker network create --subnet 192.168.11.0/24 mcsync
+docker network create --subnet 192.168.11.0/29 mcsync
 ```
+**DO NOT change the network name. Otherwise mcsync will not be able to find any container.** The reason is that mcsync locates container based on those rules:
+1. Does the container name contain `mcsync`?
+2. Does the container name contain `dns` or `ssh`?
+
+That means that `mcsync-dns-1` will match but `customname-dns-1` will not.
 
 *more coming soon*
 
@@ -164,7 +169,6 @@ docker exec -it mcsync-server-1 /bin/mcsync-server accept "Joe Doe" < /path/to/j
     "public_key": "VZBslaLy/AXCqk0rXq8Ip/+p7a/RyrG+H/WQ9ZeV8x8=",
     "psk": "Hx4EUfnSED/J409OEKw3jiZQUHK3KsfR2VfgQHYaJqs=",
     "user_subnet": "192.168.10.0/24",
-    "tool_subnet": "192.168.11.0/24",
     "ipv4_address": "192.168.10.3",
     "dns": "192.168.11.5"
 }
@@ -195,7 +199,7 @@ Connected with `friends`
 =========================
 
 Available servers:
-  * survival1 -> 4 / 20 players online - 1.19 Vanilla
+  * survival1 -> 2 / 20 players online - 1.19 Vanilla
   * creative  -> 0 / 8 players online  - 1.18.2 Vanilla
   - survival2
   - pvp
@@ -216,7 +220,7 @@ Running mcsync v1.0-DEV
 =========================
 
 Available servers:
-  * survival1 -> 4 / 8 players online - 1.19 Vanilla
+  * survival1 -> 2 / 8 players online - 1.19 Vanilla
   * creative  -> 0 / 8 players online  - 1.18.2 Vanilla
   - survival2
   - pvp
@@ -248,11 +252,20 @@ After executing that command, the entirety of this folder will be synced to your
 
 # Backgrounds
 ## Network structure
-This configuration consists of two subnets:
-* `192.168.10.0/24` is reserved for all participants.
-* `192.168.11.0/24` is reserved for all tools.
+| Network mask      | Usage                          | #  Hosts   |
+|--------------     |-----------                     |------------|
+| `192.168.10.0/24` | Reserved for all participants. | 254        |
+| `192.168.11.0/29` | Reserved for all services.     | 6          |
 
-If those subnets are colliding with any of your subnets, change them. The second subnet needs to have at least 4 hosts. **Just make sure you'll NEVER change you mask later.** At the time of writing `mcsync` does not support changing IP-address once they have been assgined.
+If those subnets are colliding with any of your subnets, change them. The second subnet needs to have at least 3 hosts. **Just make sure you'll NEVER change you mask later.** At the time of writing `mcsync` does not support changing IP-address once they have been assgined.
+
+### Alternative configuration
+In case you need more space for your users consider the following example.
+
+| Network mask      | Usage                          | #  Hosts   |
+|--------------     |-----------                     |------------|
+| `192.168.0.0/18`  | Reserved for all participants. | 16,382     |
+| `192.168.64.0/29` | Reserved for all services.     | 6          |
 
 ## Backstory
 You may remember the tool [Hamachi](https://vpn.net/). Back in the days, we used to use this program. We didn't knew how it worked, it was some kind of magic, but it allowed us to play Minecraft together. But this was years ago and now I know we achived this with using our own VPN. Yet, there was just one person who had the server. So when we wanted to play we had to wait for the hoster to be ready.

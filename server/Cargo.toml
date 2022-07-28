@@ -10,6 +10,7 @@ build = "build.rs"
 lazy_static = "1.4.0"
 tokio = { version = "1.20.1", features = ["full"]}
 signal-hook = "0.3.14"
+regex = "1"
 
 # Build hooks
 shadow-rs = "0.16.1"
@@ -23,9 +24,10 @@ mojang = "0.1.0"
 
 # Crypto related crates
 openssl = "0.10.27"
-rand = "0.8.5"
+rand = { version = "0.8.5", features = ["getrandom"] }
 sha256 = "1.0.3"
 ssh-key = { version = "0.4.2", features = ["ed25519"] }
+wireguard-keys = "0.1.1"
 
 # Webserver related crates
 reqwest = { version = "0.11.11", features = ["blocking"] }

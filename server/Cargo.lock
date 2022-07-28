@@ -242,6 +242,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "curve25519-dalek-fiat"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44339b9ecede7f72a0d3b012bf9bb5a616dc8bfde23ce544e42da075c87198f0"
+dependencies = [
+ "byteorder",
+ "digest 0.9.0",
+ "rand_core 0.6.3",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
 name = "darling"
 version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -855,6 +868,7 @@ dependencies = [
  "openssl",
  "paris",
  "rand",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",
@@ -863,6 +877,7 @@ dependencies = [
  "signal-hook",
  "ssh-key",
  "tokio",
+ "wireguard-keys",
 ]
 
 [[package]]
@@ -1078,6 +1093,12 @@ dependencies = [
  "smallvec",
  "windows-sys",
 ]
+
+[[package]]
+name = "paste"
+version = "1.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c520e05135d6e763148b6426a837e239041653ba7becd2e538c076c738025fc"
 
 [[package]]
 name = "pem-rfc7468"
@@ -2142,6 +2163,33 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "80d0f4e272c85def139476380b12f9ac60926689dd2e01d4923222f40580869d"
 dependencies = [
  "winapi",
+]
+
+[[package]]
+name = "wireguard-keys"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f59e49bf96de47d7b9223d840e73e8d3db2df6232f667702941e71fd52d03cf8"
+dependencies = [
+ "base64 0.13.0",
+ "hex",
+ "paste",
+ "rand_core 0.6.3",
+ "serde",
+ "thiserror",
+ "x25519-dalek-fiat",
+ "zeroize",
+]
+
+[[package]]
+name = "x25519-dalek-fiat"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f3519d56987103ef084eba6ddfc3be45b7eaee08f2d60bc8495cdca30362a32"
+dependencies = [
+ "curve25519-dalek-fiat",
+ "rand_core 0.6.3",
+ "zeroize",
 ]
 
 [[package]]

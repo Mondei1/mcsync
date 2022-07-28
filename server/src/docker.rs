@@ -3,6 +3,8 @@ use std::{collections::HashMap, process::exit};
 use bollard::{Docker, API_DEFAULT_VERSION, container::{ListContainersOptions, RestartContainerOptions}, models::ContainerSummary, errors::Error};
 use paris::{error, warn, success, info};
 
+use crate::SILENT;
+
 #[derive(Clone)]
 pub struct DockerManager {
     docker_daemon: Docker,
@@ -13,9 +15,11 @@ impl DockerManager {
         let docker_path = match std::env::var("DOCKER_SOCKET") {
             Ok(d) => format!("unix://{}", d),
             Err(_) => {
-                info!(
-                    "Fallback to /var/run/docker.sock because DOCKER_SOCKET has not been specified."
-                );
+                if !*SILENT.lock().unwrap() {
+                    info!(
+                        "Fallback to /var/run/docker.sock because DOCKER_SOCKET has not been specified."
+                    );
+                }
                 String::from("unix:///var/run/docker.sock")
             }
         };
@@ -25,7 +29,10 @@ impl DockerManager {
             Ok(d) => {
                 match d.version().await {
                     Ok(version_data) => {
-                        success!("Connected with Docker (version {})", version_data.version.unwrap());
+                        if !*SILENT.lock().unwrap() {
+                            success!("Connected with Docker (version {})", version_data.version.unwrap());
+                        }
+
                         d
                     },
                     Err(error) => {
