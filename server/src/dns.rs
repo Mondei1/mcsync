@@ -11,6 +11,7 @@ use domain::resolv::{StubResolver, stub::conf::{ResolvConf, ResolvOptions, Serve
 use log::{warn};
 use paris::{error, info, success, log};
 
+use crate::env;
 use crate::{docker::DockerManager};
 
 pub struct DNSManager {
@@ -21,20 +22,7 @@ pub struct DNSManager {
 
 impl DNSManager {
     pub fn new(docker_instance: DockerManager) -> Self {
-        let zone_dir = match std::env::var("DNS_ZONE_DIR") {
-            Ok(file_path) => {
-                if !Path::new(&file_path).exists() {
-                    error!("Directory {} in DNS_ZONE_DIR doesn't exist.", &file_path);
-                    exit(1);
-                }
-                
-                file_path
-            },
-            Err(_) => {
-                info!("Fallback to /dns/mcsync.d/ because DNS_ZONE_DIR has not been specified.");
-                String::from("/dns/mcsync.d/")
-            }
-        };
+        let zone_dir = env::get_dns_zone_dir();
 
         Self {
             docker_instance,
@@ -63,7 +51,6 @@ impl DNSManager {
         }
 
         let dns_address = format!("{}:53", self.dns_server).parse().unwrap();
-        println!("Query {} for {}", dns_address, target);
 
         let resolver = StubResolver::from_conf(ResolvConf {
             options: ResolvOptions {

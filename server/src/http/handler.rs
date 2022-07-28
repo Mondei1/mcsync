@@ -66,6 +66,6 @@ impl HttpHandler {
     }
 
     pub fn listen(self) {
-        self.server.listen("127.0.0.1:8080").unwrap();
+        self.server.listen("0.0.0.0:8080").unwrap();
     }
 }

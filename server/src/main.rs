@@ -10,6 +10,7 @@ mod docker;
 mod http;
 mod wireguard;
 mod routines;
+mod env;
 
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
@@ -33,7 +34,6 @@ use crate::wireguard::Wireguard;
 
 lazy_static! {
     pub static ref FILE_VPN: String = String::new();
-    pub static ref SILENT: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
 }
 
 shadow!(build);
@@ -42,38 +42,13 @@ shadow!(build);
 async fn main() {
     let args: Vec<String> = std::env::args().collect();
 
-    if args.len() > 1 {
-        *SILENT.lock().unwrap() = true;
-    }
-
     let mut database = Database::new();
     let docker_manager = DockerManager::new().await;
 
-    let endpoint: String = match std::env::var("ENDPOINT") {
-        Ok(endpoint) => {
-            // We just pretent it's a http URL.
-            match Url::parse(&format!("http://{}", endpoint)) {
-                Ok(result) => {
-                    if result.port().is_none() {
-                        error!("You need to set a port in ENDPOINT. If you're not sure use 51820 as it's WireGuard's default port.");
-                        exit(1);
-                    }
-
-                    endpoint
-                },
-                Err(error) => {
-                    error!("Environment variable contains invalid address: {}", error);
-                    exit(1);
-                }
-            }
-        },
-        Err(_) => {
-            error!("You need to set the environment variable ENDPOINT which is an address ( [Domain OR IPv4]:PORT ) under which WireGuard is reachable by others.");
-            exit(1);
-        }
-    };
+    let endpoint: String = env::get_endpoint();
 
     let mut vpn = Wireguard::new(database.clone(), endpoint);
+    vpn.regenerate_config();
 
     let subroutine = args.get(1);
 

@@ -3,7 +3,7 @@ use std::{collections::HashMap, process::exit};
 use bollard::{Docker, API_DEFAULT_VERSION, container::{ListContainersOptions, RestartContainerOptions}, models::ContainerSummary, errors::Error};
 use paris::{error, warn, success, info};
 
-use crate::SILENT;
+use crate::{env};
 
 #[derive(Clone)]
 pub struct DockerManager {
@@ -12,26 +12,16 @@ pub struct DockerManager {
 
 impl DockerManager {
     pub async fn new() -> DockerManager {
-        let docker_path = match std::env::var("DOCKER_SOCKET") {
-            Ok(d) => format!("unix://{}", d),
-            Err(_) => {
-                if !*SILENT.lock().unwrap() {
-                    info!(
-                        "Fallback to /var/run/docker.sock because DOCKER_SOCKET has not been specified."
-                    );
-                }
-                String::from("unix:///var/run/docker.sock")
-            }
-        };
+        let docker_path = env::get_docker_path();
 
         let docker_daemon = match Docker::connect_with_socket(&docker_path, 30, API_DEFAULT_VERSION)
         {
             Ok(d) => {
                 match d.version().await {
-                    Ok(version_data) => {
-                        if !*SILENT.lock().unwrap() {
+                    Ok(_) => {
+                        /*if !*SILENT.lock().unwrap() {
                             success!("Connected with Docker (version {})", version_data.version.unwrap());
-                        }
+                        }*/
 
                         d
                     },
@@ -117,7 +107,7 @@ impl DockerManager {
     }
 
     pub async fn get_self(&self) -> Option<ContainerSummary> {
-        self.find_container_by_name("mcsync", true).await
+        self.find_container_by_name("backend", true).await
     }
 
     pub async fn get_dns_container(&self) -> Option<ContainerSummary> {

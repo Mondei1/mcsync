@@ -3,8 +3,7 @@ use std::process::exit;
 
 use domain::utils::base64;
 use ipnet::Ipv4Net;
-use log::{info};
-use paris::{error, success};
+use paris::{error};
 use rand::{RngCore, Rng};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
@@ -13,6 +12,7 @@ use std::io::{self};
 
 use crate::database::{Database, DatabaseClient};
 use crate::docker::DockerManager;
+use crate::env;
 use crate::wireguard::Wireguard;
 
 pub struct Accept<'a> {
@@ -90,14 +90,6 @@ impl<'a> Accept<'a> {
     }
 
     pub async fn execute(&mut self) {
-        let user_subnet = match std::env::var("USER_SUBNET") {
-            Ok(subnet) => subnet,
-            Err(_) => {
-                info!("No USER_SUBNET provided. Fallback to 192.168.10.0/24");
-                String::from("192.168.10.0/24")
-            },
-        };
-
         let endpoint: String = match std::env::var("ENDPOINT") {
             Ok(endpoint) => {
                 // We just pretent it's a http URL.
@@ -169,20 +161,16 @@ impl<'a> Accept<'a> {
             exit(1);
         }
 
-        let net: Ipv4Net = match user_subnet.parse() {
-            Ok(s) => s,
-            Err(error) => {
-                error!("Your custom user subnet {} is invalid. Consider choosing another one: {}", user_subnet, error);
-                return;
-            }
-        };
+        let net: Ipv4Net = env::get_user_subnet();
         let mut ipv4: Option<String> = None;
 
-        let ip_space = net.hosts().rev();
+        let ip_space = net.hosts();
 
         // Loop over available IP space to find a free address.
         // This is like a mini DHCP, without DHCP protocol.
-        for available_ip in ip_space {
+
+        // .skip(1): This skips the first usable address since that one is reserved for the VPN itself.
+        for available_ip in ip_space.skip(1) {
             let mut available = true;
             for client in self.database.get_clients() {
                 if client.ipv4_address == available_ip.to_string() {
@@ -193,19 +181,20 @@ impl<'a> Accept<'a> {
 
             if available {
                 ipv4 = Some(available_ip.to_string());
+                break;
             }
         }
 
         if ipv4.is_none() {
             error!(
                 "No more space in network {}! Cannot add any new client. Consider remove inactive clients using \"mcsync-server remove [CLIENT_NAME]\"",
-                &user_subnet
+                &net.to_string()
             );
             return;
         }
 
         // Validate public key
-        let pub_key = match PublicKey::from_openssh(format!("ssh-ed25519 {}", parsed.ssh_pub).as_str()) {
+        let _ = match PublicKey::from_openssh(format!("ssh-ed25519 {}", parsed.ssh_pub).as_str()) {
             Ok(pk) => pk,
             Err(error) => {
                 error!("Client info contains an invalid ED25519 key: {}", error);
@@ -235,13 +224,15 @@ impl<'a> Accept<'a> {
         self.database.new_client(client.clone());
         self.wireguard.add_peer(parsed.wireguard_pub, psk_base64, address.clone());
 
+        let public_key = self.database.get_wireguard_private_key().pubkey().to_base64();
+
         let server_info = ServerInfo {
             version: 1,
             endpoint,
-            public_key: client.wg_public_key,
+            public_key,
             psk: client.wg_psk,
             ipv4_address: address,
-            user_subnet: user_subnet,
+            user_subnet: net.to_string(),
             dns: dns_ip
         };
 

@@ -3,6 +3,8 @@ use std::{fs::File, io::{Read, Error, Write}, time::{SystemTime, UNIX_EPOCH}, bo
 use paris::{info, error, success, warn};
 use serde::{Deserialize, Serialize};
 
+use crate::env;
+
 #[derive(Clone)]
 pub struct Database {
     path: String,
@@ -49,17 +51,7 @@ pub struct DatabaseClient {
 /// This implementation shouldn't be very slow since we work in-memory and flush on exit.
 impl Database {
     pub fn new() -> Self {
-        let path = match std::env::var("DATABASE_PATH") {
-            Ok(file_path) => {
-                file_path
-            },
-            Err(_) => {
-                info!(
-                    "Fallback to /database.json because DATABASE_PATH has not been specified."
-                );
-                String::from("/database.json")
-            }
-        };
+        let path = env::get_database_path();
 
         if !Path::new(&path).exists() {
             match File::create(&path) {
@@ -179,8 +171,15 @@ impl Database {
         &self.data
     }
 
-    pub fn get_wireguard_private_key(&self) -> String {
-        self.data.keys.wg_private.clone()
+    pub fn get_wireguard_private_key(&self) -> wireguard_keys::Privkey {
+        match wireguard_keys::Privkey::from_base64(&self.data.keys.wg_private)
+        {
+            Ok(p) => p,
+            Err(error) => {
+                error!("Fail to parse WireGuard private key. Have you touched it? {}", error);
+                exit(1);
+            }
+        }
     }
 
     /// Writes current state of database to disk. Only if config changed since last write.

@@ -39,10 +39,25 @@ Depending on your hoster you may need to enable Docker and Tunnel support. Pleas
 Create a `docker-compose.yml` file inside some new folder you create and paste the following content into it:
 ```yml
 # mcsync's Docker compose file.
-# DO NOT CHANGE ANY SERVICE NAMES. MCSYNC WILL NOT BE ABLE TO FIND THOSE CONTAINERS IF YOU DO SO.
 
 version: '3.3'
 services:
+
+  backend:
+    image: YOUR_IMAGE_ID
+    networks:
+      mcsync:
+        ipv4_address: 192.168.11.2
+    environment:
+      - USER_SUBNET=192.168.10.0/24
+      - ENDPOINT=example.com:51820
+    volumes:
+      - ./config/wg0.conf:/vpn/wg0.conf
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./dns/mcsync.d/:/dns/mcsync.d/
+      - ./mcsync-data.json:/database.json
+    depends_on:
+      - dns
 
   # We use wireguard-go, which is a userspace implementation of WireGuard, that does not depend on the kernel modules
   # since those are not always available (especially on vServers which are guests of a kernel).
@@ -52,7 +67,7 @@ services:
     image: masipcat/wireguard-go:latest
     networks:
       mcsync:
-        ipv4_address: 192.168.11.1
+        ipv4_address: 192.168.11.3
     cap_add:
      - NET_ADMIN
     sysctls:
@@ -75,7 +90,7 @@ services:
     image: lscr.io/linuxserver/openssh-server:latest
     networks:
       mcsync:
-        ipv4_address: 192.168.11.2
+        ipv4_address: 192.168.11.4
     hostname: ssh
     environment:
       - PUID=1000
@@ -84,6 +99,7 @@ services:
       - USER_NAME=mcsync
       - PUBLIC_KEY_DIR=/config/pubkeys
       - SUDO_ACCESS=false
+      - DOCKER_MODS=linuxserver/mods:openssh-server-rsync
     volumes:
       - ./ssh:/config
       - ./saves:/saves
@@ -91,11 +107,19 @@ services:
 
   dns:
     image: mvance/unbound
+
     networks:
       mcsync:
-        ipv4_address: 192.168.11.3
+        ipv4_address: 192.168.11.5
     volumes:
       - ./dns:/opt/unbound/etc/unbound/
+
+  # Test client
+  web:
+    image: nginx
+    networks:
+      mcsync:
+        ipv4_address: 192.168.11.6
 
 
 networks:
@@ -154,10 +178,10 @@ mcsync import friends ~/Download/friends_server.mcss   # Example
 To import and accept the request, run the following:
 ```sh
 # The name `mcsync-server-1` depends on how you named your container. This is the default.
-docker exec -it mcsync-server-1 /bin/mcsync-server accept [CUSTOM_NAME] < /path/to/joe_doe.mcsc > server_info.mcss
+docker exec -i mcsync-server-1 /bin/mcsync-server accept [CUSTOM_NAME] < /path/to/joe_doe.mcsc > server_info.mcss
 
 # Example
-docker exec -it mcsync-server-1 /bin/mcsync-server accept "Joe Doe" < /path/to/joe_doe.mcsc > server_info.mcss
+docker exec -i mcsync-server-1 /bin/mcsync-server accept "Joe Doe" < /path/to/joe_doe.mcsc > server_info.mcss
 ```
 `CUSTOM_NAME` can be any name you wish. Its sole purpose is to distinguish between multiple clients.
 
@@ -302,7 +326,7 @@ While this project is still growing and at its beginning there are some things I
 * Central server which is hosted by me.
   * Easier to join other peoples private networks
   * Cheaper sync of your Minecraft worlds (E2E encrypted, 50 MB free maybe)
-* Client with GUI (using IMGui)
+* Client with GUI (using egui)
 * Dashboard
 
 *more coming soon*
