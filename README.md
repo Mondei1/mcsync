@@ -114,14 +114,6 @@ services:
     volumes:
       - ./dns:/opt/unbound/etc/unbound/
 
-  # Test client
-  web:
-    image: nginx
-    networks:
-      mcsync:
-        ipv4_address: 192.168.11.6
-
-
 networks:
   mcsync:
     external: true
@@ -328,5 +320,6 @@ While this project is still growing and at its beginning there are some things I
   * Cheaper sync of your Minecraft worlds (E2E encrypted, 50 MB free maybe)
 * Client with GUI (using egui)
 * Dashboard
+* Permission groups within mcsync
 
 *more coming soon*

@@ -6,3 +6,24 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+
+# Logging
+paris = { version = "1.5.13", features = ["timestamps", "macros"] }
+
+# JSON
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.82"
+
+# Key generation / Crypto
+ssh-key = { version = "0.4.2", features = ["ed25519"] }
+wireguard-keys = "0.1.1"
+sha256 = "1.0.3"
+
+# Better CLI
+clap = { version = "3.2.15", features = ["derive"] }
+camino = "1.0.9"
+
+# Platform specific code
+cfg-if = "1.0.0"
+nix = "0.24.2"
+dirs = "4.0"
