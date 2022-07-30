@@ -98,8 +98,8 @@ impl DNSManager {
     // Setting `service_domain` to true means you explicitly state that you want to set reserved domains.
     pub async fn set_or_update_record(&self, name: &str, new_ip: &str, service_domain: bool) -> Option<()> {
         if !service_domain {
-            if name == "ssh" || name == "backend" {
-                warn!("Cannot create game server domain for reserved names \"ssh.mc\" and \"backend.mc\".");
+            if name == "backend" {
+                warn!("Cannot create game server domain for reserved names like \"backend.mc\".");
                 return None;
             }
         }
@@ -167,7 +167,7 @@ impl DNSManager {
         }
     }
 
-    // Once called, domains like "ssh.mc" and "backend.mc" will be set.
+    // Once called, domains "backend.mc" will be set.
     // Those names are reservered and cannot be created by users.
     pub async fn setup_service_domains(&mut self) {
         match self.docker_instance.get_dns_container().await {
@@ -185,21 +185,6 @@ impl DNSManager {
                 return;
             }
         };
-
-        match self.docker_instance.get_ssh_container().await {
-            Some(ssh) => {
-                let ssh_ip = self.docker_instance
-                    .get_container_ip(ssh)
-                    .await
-                    .unwrap();
-    
-                    self.set_or_update_record("ssh", &ssh_ip, true).await;
-                },
-            None => {
-                error!("Cannot find SSH container. Did you rename your containers? The name has to contain \"ssh\" and \"mcsync\" somewhere e.g. \"mcsync-ssh-1\".");
-                return;
-            }
-        }
 
         match self.docker_instance.get_self().await {
             Some(server) => {

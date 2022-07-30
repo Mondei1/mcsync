@@ -1,7 +1,7 @@
 use std::{collections::HashMap, process::exit};
 
-use bollard::{Docker, API_DEFAULT_VERSION, container::{ListContainersOptions, RestartContainerOptions}, models::ContainerSummary, errors::Error};
-use paris::{error, warn, success, info};
+use bollard::{Docker, API_DEFAULT_VERSION, container::{ListContainersOptions, RestartContainerOptions}, models::{ContainerSummary, Network}, errors::Error, network::InspectNetworkOptions};
+use paris::{error, warn};
 
 use crate::{env};
 
@@ -100,6 +100,13 @@ impl DockerManager {
         }
     }
 
+    pub async fn get_network(&self) -> Result<Network, Error> {
+        self.docker_daemon.inspect_network(&env::get_network_name(), Some(InspectNetworkOptions {
+            verbose: true,
+            scope: "local"
+        })).await
+    }
+
     pub async fn restart_container(&self, container: ContainerSummary) -> Result<(), Error> {
         self.docker_daemon.restart_container(&container.id.unwrap(), Some(RestartContainerOptions {
             ..Default::default()
@@ -107,15 +114,11 @@ impl DockerManager {
     }
 
     pub async fn get_self(&self) -> Option<ContainerSummary> {
-        self.find_container_by_name("backend", true).await
+        self.find_container_by_name("mcsync", true).await
     }
 
     pub async fn get_dns_container(&self) -> Option<ContainerSummary> {
         self.find_container_by_name("dns", true).await
-    }
-
-    pub async fn get_ssh_container(&self) -> Option<ContainerSummary> {
-        self.find_container_by_name("ssh", true).await
     }
 
     pub async fn get_vpn_container(&self) -> Option<ContainerSummary> {

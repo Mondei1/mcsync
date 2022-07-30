@@ -1,6 +1,6 @@
-use std::{fs::File, io::{Read, Error, Write}, time::{SystemTime, UNIX_EPOCH}, borrow::BorrowMut, vec, path::Path, process::exit};
+use std::{fs::File, io::{Read, Error, Write}, time::{SystemTime, UNIX_EPOCH}, vec, path::Path, process::exit};
 
-use paris::{info, error, success, warn};
+use paris::{error, warn};
 use serde::{Deserialize, Serialize};
 
 use crate::env;
@@ -41,8 +41,7 @@ pub struct DatabaseClient {
     pub(crate) ipv4_address: String,
     pub(crate) last_seen: u64,
     pub(crate) wg_public_key: String,
-    pub(crate) wg_psk: String,
-    pub(crate) ssh_public_key: String
+    pub(crate) wg_psk: String
 }
 
 /// It's not a real database. We just dump everything into a .json file to remember various things.
@@ -165,6 +164,10 @@ impl Database {
             },
             None => { None }
         }
+    }
+
+    pub fn get_syncs(&self) -> Vec<DatabaseSynced> {
+        self.data.clone().synced
     }
 
     pub fn get_data(&self) -> &DatabaseFormat {

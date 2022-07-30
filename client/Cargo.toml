@@ -5,6 +5,11 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1
+
 [dependencies]
 
 # Logging
@@ -15,7 +20,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.82"
 
 # Key generation / Crypto
-ssh-key = { version = "0.4.2", features = ["ed25519"] }
+uuid = { version = "1.1.2", features = ["v4" ]}
 wireguard-keys = "0.1.1"
 sha256 = "1.0.3"
 
@@ -27,3 +32,6 @@ camino = "1.0.9"
 cfg-if = "1.0.0"
 nix = "0.24.2"
 dirs = "4.0"
+
+# Get network interfaces
+pnet_datalink = "0.31.0"

@@ -61,7 +61,7 @@ pub fn is_wireguard_module_available() -> bool {
                     if std::str::from_utf8(&o.stderr).unwrap().contains("ERROR:") {
                         error!("WireGuard kernel module is unavailable.");
                     } else {
-                        success!("WireGuard module is available.");
+                        // success!("WireGuard module is available.");
                         return true;
                     }
                 },

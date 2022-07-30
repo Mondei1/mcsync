@@ -1,71 +1,85 @@
-use paris::info;
+use std::sync::{Arc, Mutex};
 
-use ssh_key::{
-    private::{Ed25519Keypair, KeypairData, PrivateKey},
-    rand_core::OsRng,
-    PublicKey,
-};
+use paris::{info, success};
+use rocket::{fairing::AdHoc, State, response::{content::Json, self}};
+use serde::{Serialize, Deserialize};
 
-use nickel::Nickel;
-
-use crate::database::Database;
+use crate::database::{Database, DatabaseSynced};
 
 pub struct HttpHandler {
-    server: Nickel,
-    database: Database,
+    database: Arc<Mutex<Database>>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ReturnSync {
+    sync: Vec<DatabaseSynced>
 }
 
 impl HttpHandler {
-    pub fn new(database: Database) -> Self {
-        let mut server = Nickel::new();
-        let db = database.clone();
+    pub async fn new(database: Database) -> Self {
+        Self { database: Arc::new(Mutex::new(database)) }
+    }
 
-        server.utilize(middleware! { |request|
-            let mut db_clone = db.clone();
+    pub async fn listen(&self) {
+        /*let log = warp::log::custom(|req| {
+            let mut db_clone = self.database;
 
-            let ip = request.origin.remote_addr.ip().to_string();
+            let ip = req.remote_addr().unwrap().ip().to_string();
             db_clone.seen_client(ip.as_str());
             db_clone.flush();
 
             let client = db_clone.get_client_by_ip(&ip);
 
-            info!("{} ({}) -- {} {}", 
+            info!("{} ({}) -- {} {}",
                 ip,
                 if client.is_some() { client.unwrap().name.clone() } else { String::from("") },
-                request.origin.method,
-                request.origin.uri
+                req.method(),
+                req.path()
             );
-        });
+        });*/
 
-        server.utilize(router! {
-            get "/" => | req, res | {
-                "ok"
-            }
+        start(self.database.clone());
 
-            get "/ssh-access" => | req, res | {
-                let key = Ed25519Keypair::random(&mut OsRng);
-                let key_clone = key.clone();
-                let keypair = KeypairData::from(key);
-
-                let private_key = PrivateKey::try_from(keypair).unwrap();
-                let public_key = PublicKey::try_from(key_clone.public).unwrap();
-
-                let result = private_key.to_openssh(ssh_key::LineEnding::LF).unwrap().to_string();
-
-                println!("{}", public_key.to_openssh().unwrap().to_string());
-
-                result
-            }
-
-            get "**" => |req, res| {
-                "404 not found"
-            }
-        });
-
-        Self { server, database }
-    }
-
-    pub fn listen(self) {
-        self.server.listen("0.0.0.0:8080").unwrap();
+        success!("Listening on port 80 ...");
     }
 }
+
+fn start(db: Arc<Mutex<Database>>) {
+    let db_clone = db.lock().unwrap().clone();
+
+    rocket::ignite()
+    .attach(AdHoc::on_request("Last seen & logging", move |req, _| {
+        let mut db_clone = db.lock().unwrap();
+
+        let ip = req.client_ip().unwrap().to_string();
+        db_clone.seen_client(ip.as_str());
+        db_clone.flush();
+
+        let client = db_clone.get_client_by_ip(&ip);
+
+        info!(
+            "{} ({}) -- {} {}",
+            ip,
+            if client.is_some() {
+                client.unwrap().name.clone()
+            } else {
+                String::from("")
+            },
+            req.method(),
+            req.uri().path()
+        );
+    }))
+    .manage(db_clone)
+    .mount("/", routes![hello])
+    .launch();
+}
+
+#[get("/")]
+fn hello() -> &'static str {
+    "ok"
+}
+
+/*#[get("/sync")]
+fn sync_list(db: State<Database>) -> Json<ReturnSync> {
+    Json(ReturnSync { sync: db.get_syncs()} )
+}*/

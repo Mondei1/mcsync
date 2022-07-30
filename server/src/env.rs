@@ -1,8 +1,8 @@
 use std::{process::exit, path::Path};
 
 use ipnet::Ipv4Net;
-use nickel::hyper::Url;
 use paris::{info, error};
+use reqwest::Url;
 
 /*
  Collection of functions to retrive & parse env input.
@@ -61,7 +61,6 @@ pub fn get_wg_config() -> String {
             file_path
         }
         Err(_) => {
-            info!("Fallback to /vpn/wg0.conf because WG_CONFIG has not been specified.");
             String::from("/vpn/wg0.conf")
         }
     }
@@ -87,7 +86,6 @@ pub fn get_dns_zone_dir() -> String {
             file_path
         },
         Err(_) => {
-            info!("Fallback to /dns/mcsync.d/ because DNS_ZONE_DIR has not been specified.");
             String::from("/dns/mcsync.d/")
         }
     }
@@ -99,10 +97,18 @@ pub fn get_database_path() -> String {
             file_path
         },
         Err(_) => {
-            info!(
-                "Fallback to /database.json because DATABASE_PATH has not been specified."
-            );
             String::from("/database.json")
+        }
+    }
+}
+
+pub fn get_network_name() -> String {
+    match std::env::var("DOCKER_NETWORK_NAME") {
+        Ok(name) => {
+            name
+        },
+        Err(_) => {
+            String::from("mcsync")
         }
     }
 }

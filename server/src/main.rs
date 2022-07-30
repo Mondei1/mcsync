@@ -1,8 +1,7 @@
-#![feature(decl_macro)]
+#![feature(proc_macro_hygiene, decl_macro)]
 #![feature(iter_advance_by)]
 
-#[macro_use]
-extern crate nickel;
+#[macro_use] extern crate rocket;
 
 mod database;
 mod dns;
@@ -23,7 +22,6 @@ use dns::DNSManager;
 use docker::DockerManager;
 
 use lazy_static::lazy_static;
-use nickel::hyper::Url;
 use routines::accept::Accept;
 use routines::remove::RemoveUser;
 
@@ -88,12 +86,11 @@ async fn main() {
 
     //let signals = Signals::new(&[SIGTERM, SIGINT]);
 
-    
     let mut dns_manager = DNSManager::new(docker_manager.clone());
     dns_manager.setup_service_domains().await;
 
-    let http_server = http::handler::HttpHandler::new(database);
-    http_server.listen();
+    let http_server = http::handler::HttpHandler::new(database).await;
+    http_server.listen().await;
 
     // fake_status_server();
 }

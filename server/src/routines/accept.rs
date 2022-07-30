@@ -7,7 +7,6 @@ use paris::{error};
 use rand::{RngCore, Rng};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
-use ssh_key::PublicKey;
 use std::io::{self};
 
 use crate::database::{Database, DatabaseClient};
@@ -24,8 +23,7 @@ pub struct Accept<'a> {
 #[derive(Debug, Deserialize)]
 struct ClientInfo {
     version: u16,
-    wireguard_pub: String,
-    ssh_pub: String,
+    wireguard_pub: String
 }
 
 #[derive(Debug, Serialize)]
@@ -34,6 +32,7 @@ struct ServerInfo {
     endpoint: String,
     public_key: String,
     psk: String,
+    tool_subnet: String,
     user_subnet: String,
     ipv4_address: String,
     dns: String
@@ -193,15 +192,6 @@ impl<'a> Accept<'a> {
             return;
         }
 
-        // Validate public key
-        let _ = match PublicKey::from_openssh(format!("ssh-ed25519 {}", parsed.ssh_pub).as_str()) {
-            Ok(pk) => pk,
-            Err(error) => {
-                error!("Client info contains an invalid ED25519 key: {}", error);
-                return;
-            }
-        };
-
         // Generate random PSK
         let mut rng = rand::thread_rng();
         let mut psk: [u8; 32] = [0; 32];
@@ -217,14 +207,24 @@ impl<'a> Accept<'a> {
             ipv4_address: address.clone(),
             last_seen: 0,
             wg_public_key: parsed.wireguard_pub.clone(),
-            wg_psk: psk_base64.clone(),
-            ssh_public_key: parsed.ssh_pub,
+            wg_psk: psk_base64.clone()
         };
 
         self.database.new_client(client.clone());
         self.wireguard.add_peer(parsed.wireguard_pub, psk_base64, address.clone());
 
         let public_key = self.database.get_wireguard_private_key().pubkey().to_base64();
+
+        let tool_subnet = match self.docker.get_network().await {
+            Ok(info) => {
+                // Like this is really dangerous. There are a lot of .unwrap's but you only live once, right?
+                info.ipam.unwrap().config.unwrap().get(0).unwrap().subnet.clone().unwrap()
+            },
+            Err(error) => {
+                error!("Cannot find Docker network \"mcsync\": {}", error);
+                exit(1);
+            }
+        };
 
         let server_info = ServerInfo {
             version: 1,
@@ -233,8 +233,19 @@ impl<'a> Accept<'a> {
             psk: client.wg_psk,
             ipv4_address: address,
             user_subnet: net.to_string(),
+            tool_subnet,
             dns: dns_ip
         };
+
+        match self.docker.get_vpn_container().await {
+            Some(vpn) => {
+                let _ = self.docker.restart_container(vpn);
+            },
+            None => {
+                error!("Cannot find WireGuard container. Is it stopped?");
+                exit(1);
+            }
+        }
 
         println!("{}", serde_json::to_string_pretty(&server_info).unwrap());
     }

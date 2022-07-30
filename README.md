@@ -3,7 +3,7 @@
 
 **DISCLAIMER:** This is mostly a concept at this point. Things might change in the future but for now, don't use it yet.
 
-`mcsync` is not just a program, it rather consists of a custom client & server, a DNS, SSH & WireGuard server. It has been developed with Docker in mind. All the custom parts were built using **Rust**.
+`mcsync` is not just a program, it rather consists of a custom client & server, a DNS and WireGuard server. It has been developed with Docker in mind. All the custom parts were built using **Rust**.
 
 ## Features
 * Tunnel minecraft server to all participants *(using WireGuard)*
@@ -85,26 +85,6 @@ services:
     privileged: true
     restart: always
 
-  # This service is used by rsync to move the minecraft server files around.
-  ssh:
-    image: lscr.io/linuxserver/openssh-server:latest
-    networks:
-      mcsync:
-        ipv4_address: 192.168.11.4
-    hostname: ssh
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Berlin
-      - USER_NAME=mcsync
-      - PUBLIC_KEY_DIR=/config/pubkeys
-      - SUDO_ACCESS=false
-      - DOCKER_MODS=linuxserver/mods:openssh-server-rsync
-    volumes:
-      - ./ssh:/config
-      - ./saves:/saves
-    restart: unless-stopped
-
   dns:
     image: mvance/unbound
 
@@ -124,7 +104,7 @@ docker network create --subnet 192.168.11.0/29 mcsync
 ```
 **DO NOT change the network name. Otherwise mcsync will not be able to find any container.** The reason is that mcsync locates container based on those rules:
 1. Does the container name contain `mcsync`?
-2. Does the container name contain `dns` or `ssh`?
+2. Does the container name contain `dns`?
 
 That means that `mcsync-dns-1` will match but `customname-dns-1` will not.
 

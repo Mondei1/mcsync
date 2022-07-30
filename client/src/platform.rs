@@ -12,7 +12,7 @@ pub fn get_config_directory() -> Utf8PathBuf {
             Utf8PathBuf::from_path_buf(dir).unwrap()
         },
         None => {
-            error!("Cannot obtain config directory. You need to specify the directory manual using --config-dir=PATH");
+            error!("Cannot obtain config directory. You need to specify the directory manually using --config-dir=PATH");
             exit(1);
         }
     }
