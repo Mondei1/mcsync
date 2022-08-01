@@ -232,8 +232,9 @@ Clients:
 ## Add new server (client only)
 You need to connect to a server before you can use this command.
 ```sh
-mcsync init [NAME]
-mcsync init survival1   # Example
+mcsync init [NAME] --start-file [PATH]
+mcsync init survival1 --start-script startServer.sh     # Example 1
+mcsync init survival1 --start-script vanilla-1.19.jar   # Example 2
 ```
 This will generate a new file called `.sync` inside your minecraft server containing the following information:
 ```json
@@ -244,7 +245,19 @@ This will generate a new file called `.sync` inside your minecraft server contai
   "version": 1                  // Version of mcsync that performed the last sync.
 }
 ```
+When --start-file points to a script, make sure you have a Windows (.bat) and a Unix (.sh) version. In the example 1 above, there must be a startServer.sh and startServer.bat. In example 2 there only has to be the jar file.
+
+If it points to a `.jar` file, it will be executed with `java -Xms256M -Xmx2G %jar% nogui` by default.
+
 After executing that command, the entirety of this folder will be synced to your remote.
+
+## Run Minecraft server (client only)
+You can run this command everywhere on your computer.
+```sh
+mcsync start [NAME]
+mcsync start survival1  # Example
+```
+This will start the Minecraft server and it will tell the backend that its ready. Once the Minecraft server finished starting, other members can join it.
 
 # Backgrounds
 ## Network structure

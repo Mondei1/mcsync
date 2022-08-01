@@ -13,7 +13,9 @@ use config::Config;
 use nix::unistd::Uid;
 use paris::{error};
 use prerequisites::Prerequisites;
-use routines::{client_info::ClientInfo, import::Import, connect::Connect};
+use routines::{client_info::ClientInfo, import::Import, connect::Connect, disconnect::Disconnect};
+
+use crate::platform::permission_check;
 
 #[derive(Parser, Debug)]
 #[clap(author = "Nicolas Klier aka Mondei1", version, about = "Tunnel & share your Minecraft server with friends.", long_about = None)]
@@ -66,15 +68,17 @@ struct GlobalOpts {
     verbose: usize
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // Modules are installed and available. Next, we have to parse the command line.
     let args: App = App::parse();
     let conf = Config::new(args.global_opts.config_file.clone());
     conf.verify_integrity();
 
-    if !is_root() {
-        error!("mcsync requires root permissions to create a tunnel for you.");
-        exit(0);
+    cfg_if! {
+        if #[cfg(unix)] {
+            permission_check();
+        }
     }
 
     // Try to install WireGuard module.
@@ -96,8 +100,11 @@ fn main() {
                 exit(1);
             }
 
-            let _ = Connect::execute(conf, server.unwrap());
-        }
+            let _ = Connect::execute(conf, server.unwrap()).await;
+        },
+        Action::Disconnect => {
+            let _ = Disconnect::execute();
+        },
         _ => {
             error!("This command is not yet supported. Sorry :c");
             exit(0);

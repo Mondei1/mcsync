@@ -2,10 +2,9 @@ use std::{process::{Command, exit}, ffi::OsStr};
 
 use cfg_if::cfg_if;
 
-use paris::{error, success, info};
+use paris::{error, info};
 
 pub struct Prerequisites {
-
 }
 
 #[derive(Debug)]

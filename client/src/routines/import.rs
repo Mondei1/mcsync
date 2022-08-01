@@ -1,15 +1,11 @@
 use std::{process::exit, fs::File};
 
 use camino::Utf8PathBuf;
-use paris::{error, success};
-use serde::{Deserialize};
-use uuid::Uuid;
-
+use paris::{error, success, info};
 use crate::config::{Config, ServerInfo};
 
 pub struct Import {
 }
-
 
 impl Import {
     pub fn execute(mut config: Config, server_name: String, target_file: Utf8PathBuf) {
@@ -42,10 +38,7 @@ impl Import {
         };
 
         success!("Successfully added server {} ({}) to your configuration.", server_name, new_uuid);
-        success!("You can now execute \"mcsync connect {}\" in order to play.", server_name);
-    }
-
-    pub fn write(&self) {
-        
+        success!("You can now execute \"mcsync connect {}\" in order to play.\n", server_name);
+        info!("You may want to delete {} because it contains sensetive information.", target_file.file_name().unwrap());
     }
 }

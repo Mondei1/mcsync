@@ -1,14 +1,19 @@
-use std::{fs, process::{exit, Command}, os::unix::prelude::OpenOptionsExt, io::Write};
+use std::{
+    fs,
+    io::Write,
+    os::unix::prelude::OpenOptionsExt,
+    process::{exit, Command}, time::Duration,
+};
 
 use camino::Utf8PathBuf;
 use paris::{error, success};
 
-use crate::config::{ClientServer, Config};
+use crate::{config::{ClientServer, Config}, platform::{get_wg_config, does_wg_interface_exist}};
 
 pub struct Connect {}
 
 impl Connect {
-    pub fn execute(config: Config, server: ClientServer) {
+    pub async fn execute(config: Config, server: ClientServer) {
         let template = format!(
             r"
 ###
@@ -16,7 +21,7 @@ impl Connect {
 # DO NOT TOUCH. WILL BE DELETED AS SOON AS YOU DISCONNECT FROM YOUR REMOTE SERVER.
 ###
 
-# This you
+# This is you
 [Interface]
 PrivateKey = {private_key}
 Address = {ipv4_address}/32
@@ -41,12 +46,12 @@ PersistentKeepalive = 25
             endpoint = &server.endpoint
         );
 
-        let mut path: Utf8PathBuf;
+        let path: Utf8PathBuf;
 
         cfg_if::cfg_if! {
             if #[cfg(unix)] {
-                path = Utf8PathBuf::from("/tmp/.mcsync/wg0.conf");
-                
+                path = get_wg_config();
+
                 let mut dir = path.clone();
                 dir.pop();
 
@@ -61,10 +66,10 @@ PersistentKeepalive = 25
                 }
 
                 if path.exists() {
-                    if pnet_datalink::interfaces().into_iter().find(|x| x.name == "wg0").is_some() {
+                    if does_wg_interface_exist() {
                         error!("You are still connected with a server. You first need to disconnect before you can join another one.");
                         error!("Run \"mcsync disconnect\" to disconnect.");
-                        
+
                         exit(1);
                     }
 
@@ -97,9 +102,7 @@ PersistentKeepalive = 25
                 // Instruct WireGuard to connect using wireguard-tools
                 match Command::new("wg-quick").args(["up", &path.to_string()]).spawn() {
                     Ok(mut child) => {
-                        if child.wait().unwrap().success() {
-                            success!("Connected with {}. Have fun playing!", &server.name);
-                        } else {
+                        if !child.wait().unwrap().success() {
                             error!("WireGuard failed to setup your tunnel. See possible errors above.");
                             exit(1);
                         }
@@ -110,8 +113,28 @@ PersistentKeepalive = 25
                     }
                 }
 
+
                 // Check if backend is reachable.
-                
+                let client = reqwest::ClientBuilder::new()
+                    .connect_timeout(Duration::from_millis(200))
+                    .user_agent("mcsync client")
+                    .build().unwrap();
+
+                match client.get("http://backend.mc:8080").send().await {
+                    Ok(res) => {
+                        if res.status() == 200 {
+                            success!("Connected with {}. Have fun playing!", &server.name);
+                        } else {
+                            error!("Connection succeeded but server backend returned with {}", res.status());
+                        }
+                    }
+                    Err(error) => {
+                        error!("Connection failed. The server backend is unreachable, so WireGuard may not have been able to connect.\nError: {}\n", error);
+                        error!("If you don't want to troubleshoot the problem, type \"mcsync disconnect\"");
+
+                        exit(1);
+                    }
+                }
             }
         }
     }

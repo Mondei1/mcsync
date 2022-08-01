@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 pub const CONFIG_VERSION: u16 = 1;
+pub const SERVERINFO_VERSION: u16 = 1;
 
 #[derive(Clone)]
 pub struct Config {
@@ -52,6 +53,7 @@ pub struct ClientSync {
     server: String,
     name: String,
     location: String,
+    start: String,
     share: bool,
 }
 
@@ -70,7 +72,7 @@ pub struct ServerInfo {
 
 impl Config {
     pub fn new(config_path: Utf8PathBuf) -> Self {
-        let mut data: ClientConfig;
+        let data: ClientConfig;
 
         if config_path.exists() {
             data = match File::open(&config_path) {
@@ -194,7 +196,7 @@ impl Config {
     pub fn get_public_wireguard_key(&self) -> wireguard_keys::Pubkey {
         match wireguard_keys::Privkey::from_base64(&self.data.keys.wg) {
             Ok(private_key) => private_key.pubkey(),
-            Err(error) => {
+            Err(_) => {
                 error!("Private WireGuard key is corrupt. Have you touched it? You may have locked yourself out by touching it.");
                 exit(1);
             }
@@ -206,6 +208,11 @@ impl Config {
     }
 
     pub fn add_server(&mut self, server_name: String, server: ServerInfo) -> Option<String> {
+        if server.version > SERVERINFO_VERSION {
+            error!("This server info file has been created with a newer version of mcsync. Refuse to load.");
+            exit(1);
+        }
+
         let uuid = Uuid::new_v4().to_string();
 
         let duplicate_name = self.data.server.iter().find(|x| x.name == server_name);
@@ -243,8 +250,83 @@ impl Config {
     }
 
     pub fn get_server_by_name(&self, server_name: &str) -> Option<ClientServer> {
-        self.data.clone()
-            .server.into_iter().find(|x| x.name == server_name)
+        self.data.clone().server.into_iter()
+            .find(|x| x.name == server_name)
+    }
+
+    pub fn add_sync(&self, sync_name: &str, mut start: Utf8PathBuf) -> Option<String> {
+        if self.get_sync_by_name(sync_name).is_some() {
+            return None;
+        }
+
+        if !start.exists() {
+            error!("Start file doesn't exists. It has to be a script (.sh and .bat) or a JAR-file.");
+            return None;
+        }
+
+        if !start.is_file() {
+            error!("Selected path points to a non-file. Maybe a folder or link?");
+            exit(1);
+        }
+
+        let final_path = match start.extension() {
+            Some(ex) => {
+                if ex != "jar" {
+                    // Try again but without extension
+                    return self.add_sync(sync_name, start.with_extension(""));
+                }
+
+                // File points to a JAR-file.
+                start
+            }
+            // File has no extension. Try to figure out if both versions exist.
+            None => {
+                let filename = start.clone().file_name().unwrap().to_string();
+
+                let mut unix = false;
+                let mut windows = false;
+
+                start.pop();
+                start.push(format!("{}.sh", filename));
+                if start.exists() {
+                    unix = true;
+                }
+
+                start.pop();
+                start.push(format!("{}.bat", filename));
+
+                if start.exists() {
+                    windows = true;
+                }
+
+                if !unix || !windows {
+                    error!("There has to be a {}.sh (for Unix) and {}.bat (for Windows) file. This is required because some users might host using Windows or Linux/macOS.", filename, filename);
+                    return None;
+                }
+
+                start.with_extension("")
+            }
+        };
+
+        if !final_path.exists() {
+            error!("Start file doesn't exist.");
+            return None;
+        }
+
+        let new_id = Uuid::new_v4();
+
+        /*self.data.sync.push(ClientSync {
+            id: new_id,
+            name: sync_name,
+            location: start
+        });*/
+
+        return None;
+    }
+    
+    pub fn get_sync_by_name(&self, sync_name: &str) -> Option<ClientSync> {
+        self.data.clone().sync.into_iter()
+            .find(|x| x.name == sync_name)
     }
 
     pub fn flush(&mut self) -> Option<()> {
