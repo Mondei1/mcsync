@@ -1,6 +1,5 @@
-use std::{process::exit, env::current_exe};
+use std::{process::exit};
 
-use caps::Capability;
 use cfg_if::cfg_if;
 
 use camino::Utf8PathBuf;
@@ -26,7 +25,7 @@ pub fn get_config_directory() -> Utf8PathBuf {
 pub fn get_wg_config() -> Utf8PathBuf {
     cfg_if! {
         if #[cfg(unix)] {
-            return Utf8PathBuf::from("/tmp/.mcsync/wg0.conf");
+            return Utf8PathBuf::from(format!("/tmp/.mcsync/{}/wg0.conf", users::get_current_uid()));
         }
     }
 }

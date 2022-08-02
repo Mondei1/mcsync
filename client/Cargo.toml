@@ -25,7 +25,8 @@ serde_json = "1.0.82"
 # Key generation / Crypto
 uuid = { version = "1.1.2", features = ["v4" ]}
 wireguard-keys = "0.1.1"
-sha256 = "1.0.3"
+ring = "0.16.20"
+data-encoding = "2.3.2"
 
 # HTTP
 reqwest = "0.11.11"
@@ -40,6 +41,7 @@ nix = "0.24.2"
 dirs = "4.0"
 users = "0.11.0"
 caps = "0.5.3"
+walkdir = "2.3.2"
 
 # Get network interfaces
 pnet_datalink = "0.31.0"

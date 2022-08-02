@@ -1,15 +1,18 @@
 use std::{
     fs::{self, create_dir_all, File},
-    io::Write,
+    io::{Write, BufReader},
     os::unix::prelude::OpenOptionsExt,
     process::exit,
 };
 
 use camino::Utf8PathBuf;
+use data_encoding::HEXUPPER;
 use paris::{error, warn};
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+use crate::utils::hash::sha256_digest;
 
 pub const CONFIG_VERSION: u16 = 1;
 pub const SERVERINFO_VERSION: u16 = 1;
@@ -27,6 +30,7 @@ pub struct ClientConfig {
     pub(crate) keys: ClientKeys,
     pub(crate) server: Vec<ClientServer>,
     pub(crate) sync: Vec<ClientSync>,
+    pub(crate) current: Option<String>
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -124,6 +128,7 @@ impl Config {
                         keys: ClientKeys { wg: wg.to_base64() },
                         server: vec![],
                         sync: vec![],
+                        current: None
                     };
 
                     match serde_json::to_string_pretty(&new_config) {
@@ -161,7 +166,7 @@ impl Config {
         }
     }
 
-    pub fn verify_integrity(&self) {
+    pub fn verify_integrity(&mut self) {
         let mut faulty = false;
 
         if self.data.version > CONFIG_VERSION {
@@ -187,6 +192,13 @@ impl Config {
             }
         }
 
+        if self.data.current.is_some() {
+            if self.get_server_by_id(&self.data.current.as_ref().unwrap()).is_none() {
+                warn!("Field \"current\" in config points to an non-existing server. Remove flag.");
+                self.data.current = None;
+            }
+        }
+
         if faulty {
             error!("There are some logical errors within your config file ({}), see previous warnings. That might be due to manual changes made by you. Please resolve them and try again.", self.config_path);
             exit(1);
@@ -205,6 +217,20 @@ impl Config {
 
     pub fn get_data(&self) -> &ClientConfig {
         &self.data
+    }
+
+    pub fn set_current_server(&mut self, server_id: &str) {
+        self.data.current = Some(server_id.to_string());
+
+        self.flush();
+    }
+
+    pub fn get_current_server(&self) -> Option<ClientServer> {
+        if self.data.current.is_none() {
+            return None;
+        }
+
+        self.get_server_by_id(&self.data.current.as_ref().unwrap())
     }
 
     pub fn add_server(&mut self, server_name: String, server: ServerInfo) -> Option<String> {
@@ -252,6 +278,11 @@ impl Config {
     pub fn get_server_by_name(&self, server_name: &str) -> Option<ClientServer> {
         self.data.clone().server.into_iter()
             .find(|x| x.name == server_name)
+    }
+
+    pub fn get_server_by_id(&self, server_id: &str) -> Option<ClientServer> {
+        self.data.clone().server.into_iter()
+            .find(|x| x.id == server_id)
     }
 
     pub fn add_sync(&self, sync_name: &str, mut start: Utf8PathBuf) -> Option<String> {
@@ -315,12 +346,6 @@ impl Config {
 
         let new_id = Uuid::new_v4();
 
-        /*self.data.sync.push(ClientSync {
-            id: new_id,
-            name: sync_name,
-            location: start
-        });*/
-
         return None;
     }
     
@@ -332,7 +357,15 @@ impl Config {
     pub fn flush(&mut self) -> Option<()> {
         match serde_json::to_string_pretty(&self.data) {
             Ok(pretty) => {
-                let new_fingerprint = sha256::digest(&pretty);
+                let hasher = match sha256_digest(BufReader::new(pretty.as_bytes())) {
+                    Ok(s) => s,
+                    Err(error) => {
+                        error!("Error: Cannot determine if config has changed: {}", error);
+                        exit(1);
+                    }
+                };
+
+                let new_fingerprint = HEXUPPER.encode(hasher.as_ref());
                 if new_fingerprint == self.fingerprint {
                     warn!("No change was made.");
                     return None;

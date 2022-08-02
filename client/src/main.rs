@@ -2,6 +2,8 @@ mod routines;
 mod prerequisites;
 mod platform;
 mod config;
+mod sync;
+mod utils;
 
 use std::{process::{exit}};
 
@@ -15,7 +17,7 @@ use paris::{error};
 use prerequisites::Prerequisites;
 use routines::{client_info::ClientInfo, import::Import, connect::Connect, disconnect::Disconnect};
 
-use crate::platform::permission_check;
+use crate::{platform::permission_check, routines::init::Init};
 
 #[derive(Parser, Debug)]
 #[clap(author = "Nicolas Klier aka Mondei1", version, about = "Tunnel & share your Minecraft server with friends.", long_about = None)]
@@ -54,7 +56,13 @@ enum Action {
     Status,
 
     /// Share game server with other members.
-    Init
+    Init {
+        /// Name you want to give to your server.
+        name: String,
+
+        /// Path to a some script file (.sh/.bash) or to a .jar file.
+        start_file: Utf8PathBuf
+    }
 }
 
 #[derive(Debug, Args)]
@@ -72,7 +80,7 @@ struct GlobalOpts {
 async fn main() {
     // Modules are installed and available. Next, we have to parse the command line.
     let args: App = App::parse();
-    let conf = Config::new(args.global_opts.config_file.clone());
+    let mut conf = Config::new(args.global_opts.config_file.clone());
     conf.verify_integrity();
 
     cfg_if! {
@@ -105,6 +113,9 @@ async fn main() {
         Action::Disconnect => {
             let _ = Disconnect::execute();
         },
+        Action::Init { name, start_file } => {
+            let _ = Init::execute(conf, name).await;
+        }
         _ => {
             error!("This command is not yet supported. Sorry :c");
             exit(0);

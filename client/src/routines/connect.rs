@@ -13,7 +13,7 @@ use crate::{config::{ClientServer, Config}, platform::{get_wg_config, does_wg_in
 pub struct Connect {}
 
 impl Connect {
-    pub async fn execute(config: Config, server: ClientServer) {
+    pub async fn execute(mut config: Config, server: ClientServer) {
         let template = format!(
             r"
 ###
@@ -113,7 +113,6 @@ PersistentKeepalive = 25
                     }
                 }
 
-
                 // Check if backend is reachable.
                 let client = reqwest::ClientBuilder::new()
                     .connect_timeout(Duration::from_millis(200))
@@ -124,6 +123,7 @@ PersistentKeepalive = 25
                     Ok(res) => {
                         if res.status() == 200 {
                             success!("Connected with {}. Have fun playing!", &server.name);
+                            config.set_current_server(&server.id);
                         } else {
                             error!("Connection succeeded but server backend returned with {}", res.status());
                         }
