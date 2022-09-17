@@ -3,7 +3,7 @@ use std::{collections::HashMap, process::exit};
 use bollard::{Docker, API_DEFAULT_VERSION, container::{ListContainersOptions, RestartContainerOptions}, models::{ContainerSummary, Network}, errors::Error, network::InspectNetworkOptions};
 use paris::{error, warn};
 
-use crate::{env};
+use crate::env;
 
 #[derive(Clone)]
 pub struct DockerManager {
@@ -68,7 +68,7 @@ impl DockerManager {
             }
         }
 
-        return None;
+        None
     }
 
     /** This will only work for containers inside the "mcsync" network. */

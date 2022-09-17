@@ -1,4 +1,4 @@
-use std::{fs::File, io::{Read, Error, Write}, time::{SystemTime, UNIX_EPOCH}, vec, path::Path, process::exit};
+use std::{fs::File, io::{Read, Write}, time::{SystemTime, UNIX_EPOCH}, vec, path::Path, process::exit};
 
 use paris::{error, warn};
 use serde::{Deserialize, Serialize};
@@ -30,9 +30,9 @@ pub struct DatabaseKeys {
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct DatabaseSynced {
-    id: String,
-    name: String,
-    share: bool
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) share: bool
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -87,15 +87,13 @@ impl Database {
                         synced: vec![]
                     }
                 } else {
-                    let parsed = match serde_json::from_str::<DatabaseFormat>(&contents) {
+                    match serde_json::from_str::<DatabaseFormat>(&contents) {
                         Ok(o) => o,
                         Err(error) => {
                             error!("Invalid json syntax: {}", error);
                             std::process::exit(1);
                         }
-                    };
-                    
-                    parsed
+                    }    
                 }
                 
             },
@@ -130,7 +128,7 @@ impl Database {
     }
 
     /// Call once you have seen the client.
-    pub fn seen_client(&mut self, ip: &str) -> () {
+    pub fn seen_client(&mut self, ip: &str) {
         match self.data.client.iter().position(|c| c.ipv4_address == ip) {
             Some(pos) => {
                 let mut changed_user = self.get_clients().get(pos).unwrap().clone();

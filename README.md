@@ -186,6 +186,35 @@ This server is now your current server. All future operations (like adding a new
 mcsync disconnect
 ```
 
+## Host a server (client only)
+There is a server of a friend you would like to host? No problem, just type this:
+```sh
+$ cd /path/to/your/local/server/folder
+$ mcsync host
+Resolve delta ...
+Delta summary: 4 new, 23 modified and 7 files were deleted since last sync.
+==============
+
+(  0 %) ↑ world/region/r.-1.-1.mca                  (1.14 MB)
+[...]
+( 14 %) ↑ world/playerdata/[...]9a-a3a4b8481aab.dat (4 KB)
+```
+mcsync will now download all server files if they don't exist yet.
+
+### If you don't have the server yet.
+You might have to download a fresh copy of a server that you don't yet have. Just execute the same command with the server name:
+```sh
+$ cd /path/to/your/server/collection
+$ mcsync host survival2
+Clone `survival2` into /path/to/your/server/collection/survival2 ...
+
+(  0 %) ↓ minecraft_server.jar                      (14 MB)
+(  1 %) ↓ server.properties                         (425 Bytes)
+[...]
+
+Done. You can now run "mcsync host" within the new server.
+```
+mcsync will create a new folder within your current working directory.
 ## Status
 ### Client
 ```

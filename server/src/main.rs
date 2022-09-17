@@ -1,8 +1,6 @@
 #![feature(proc_macro_hygiene, decl_macro)]
 #![feature(iter_advance_by)]
 
-#[macro_use] extern crate rocket;
-
 mod database;
 mod dns;
 mod docker;
@@ -14,7 +12,6 @@ mod env;
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::process::exit;
-use std::sync::{Mutex, Arc};
 use std::thread;
 
 use database::Database;
@@ -50,7 +47,7 @@ async fn main() {
 
     let subroutine = args.get(1);
 
-    if subroutine.is_some() {
+    if let Some(..) = subroutine {
         match subroutine.unwrap().to_lowercase().as_str() {
             "accept" => {
                 Accept::new(&mut database, &mut vpn, &docker_manager).execute().await;

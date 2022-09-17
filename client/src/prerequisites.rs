@@ -1,11 +1,15 @@
-use std::{process::{Command, exit}, ffi::OsStr};
+use std::{
+    ffi::OsStr,
+    process::{exit, Command},
+};
 
 use cfg_if::cfg_if;
 
 use paris::{error, info};
 
-pub struct Prerequisites {
-}
+use crate::utils::{child::spawn_child, rclone};
+
+pub struct Prerequisites {}
 
 #[derive(Debug)]
 pub enum PackageManager {
@@ -13,15 +17,15 @@ pub enum PackageManager {
     Dnf,
     Pacman,
     Apk,
-    Emerge
+    Emerge,
 }
 
 impl Prerequisites {
     pub fn new() -> Self {
-        Self { }
+        Self {}
     }
 
-    pub fn check(&self) {
+    pub async fn check(&self) {
         // 1. Check for WireGuard
         if !is_wireguard_module_available() {
             cfg_if! {
@@ -33,21 +37,26 @@ impl Prerequisites {
                             exit(1);
                         }
                     };
-    
+
                     info!("Determined {:?} as your package manager.", package_manager);
                     info!("Run installation (this might take a few seconds) ...");
-                    
+
                     let install_status = install_wireguard_module(package_manager);
                     if !install_status {
                         error!("Automatic installation failed (see previous error). You're on your own, sorry. Come back once you installed the kernel module.");
                         error!("You can execute \"modinfo wireguard\" to check if you installed everything correctly.");
                         exit(1);
                     }
-    
+
                     info!("Installation successful! Please reboot your computer so the new modules get loaded.");
                     exit(0);
                 }
             }
+        }
+
+        // 2. Check for rclone
+        if rclone::check_for_update().await {
+            rclone::install_latest_version().await;
         }
     }
 }
@@ -102,80 +111,59 @@ pub fn install_wireguard_module(package_manager: PackageManager) -> bool {
 pub fn run_package_manager<I, S>(command: &str, args: I) -> bool
 where
     I: IntoIterator<Item = S>,
-    S: AsRef<OsStr> {
-        match Command::new(command).args(args).spawn() {
-            Ok(mut child) => {
-                match child.try_wait() {
-                    Ok(Some(status)) => {
-                        status.success()
-                    },
-                    Ok(None) => {
-                        let res = child.wait();
+    S: AsRef<OsStr>,
+{
+    let result = spawn_child(command, args);
 
-                        match res {
-                            Ok(status) => {
-                                status.success()
-                            },
-                            Err(error) => {
-                                error!("Failed to unwrap exit code: {}", error);
-                                false
-                            }
-                        }
-                    },
-                    Err(error) => {
-                        error!("Cannot wait for child: {}", error);
-                        false
-                    }
-                }
-            },
-            Err(error) => {
-                error!("{:?} failed to install the modules: {}", command, error);
-                false
-            }
-        }
+    if result {
+        info!("Package installation finished successfully.");
+    } else {
+        error!("Failed to install the modules. See previous errors.");
     }
+    
+    result
+}
 
 pub fn determine_package_manager() -> Option<PackageManager> {
     // Apt
     match Command::new("apt").output() {
         Ok(_) => {
             return Some(PackageManager::Apt);
-        },
-        Err(_) => { }
+        }
+        Err(_) => {}
     }
 
     // Dnf
     match Command::new("dnf").output() {
         Ok(_) => {
             return Some(PackageManager::Dnf);
-        },
-        Err(_) => { }
+        }
+        Err(_) => {}
     }
 
     // Pacman
     match Command::new("pacman").output() {
         Ok(_) => {
             return Some(PackageManager::Pacman);
-        },
-        Err(_) => { }
+        }
+        Err(_) => {}
     }
 
     // Apk
     match Command::new("apk").output() {
         Ok(_) => {
             return Some(PackageManager::Apk);
-        },
-        Err(_) => { }
+        }
+        Err(_) => {}
     }
 
     // Emerge
     match Command::new("emerge").output() {
         Ok(_) => {
             return Some(PackageManager::Emerge);
-        },
-        Err(_) => { }
+        }
+        Err(_) => {}
     }
-
 
     None
 }

@@ -29,8 +29,7 @@ pub struct ClientConfig {
     pub(crate) version: u16,
     pub(crate) keys: ClientKeys,
     pub(crate) server: Vec<ClientServer>,
-    pub(crate) sync: Vec<ClientSync>,
-    pub(crate) current: Option<String>
+    pub(crate) sync: Vec<ClientSync>
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,12 +52,12 @@ pub struct ClientServer {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClientSync {
-    id: String,
-    server: String,
-    name: String,
-    location: String,
-    start: String,
-    share: bool,
+    pub(crate) id: String,
+    pub(crate) server: String,
+    pub(crate) name: String,
+    pub(crate) location: String,
+    pub(crate) start: String,
+    pub(crate) share: bool,
 }
 
 // Copied over from server. Maybe I use a shared project or something.
@@ -76,10 +75,10 @@ pub struct ServerInfo {
 
 impl Config {
     pub fn new(config_path: Utf8PathBuf) -> Self {
-        let data: ClientConfig;
 
-        if config_path.exists() {
-            data = match File::open(&config_path) {
+        let data: ClientConfig = if config_path.exists() {
+            // Open already exixisting file.
+            match File::open(&config_path) {
                 Ok(file) => match serde_json::from_reader(file) {
                     Ok(json) => json,
                     Err(error) => {
@@ -112,13 +111,15 @@ impl Config {
                 }
             }
 
-            // Create default config
+            // Create default config.
+            // Note that we assign chmod 660 to the new config file since it contains private keys.
             let file_options = fs::OpenOptions::new()
                 .create(true)
                 .write(true)
                 .mode(0o660)
                 .open(&config_path);
-            data = match file_options {
+            
+            match file_options {
                 Ok(mut file) => {
                     // We now need to generate both WireGuard keys.
                     let wg = wireguard_keys::Privkey::generate();
@@ -127,8 +128,7 @@ impl Config {
                         version: 1,
                         keys: ClientKeys { wg: wg.to_base64() },
                         server: vec![],
-                        sync: vec![],
-                        current: None
+                        sync: vec![]
                     };
 
                     match serde_json::to_string_pretty(&new_config) {
@@ -151,8 +151,8 @@ impl Config {
                     error!("Couldn't create config file at {}: {}", &config_path, error);
                     exit(1);
                 }
-            };
-        }
+            }
+        };
 
         if !config_path.is_file() {
             error!("Selected config file is actually not a file.");
@@ -177,25 +177,12 @@ impl Config {
         // 1. Check if all synced server point to a valid server.
         // 2. Make sure those endpoints are reachable.
         for sync in &self.data.sync {
-            if self
-                .data
-                .server
-                .iter()
-                .find(|x| x.id == sync.server)
-                .is_none()
-            {
+            if !self.data.server.iter().any(|x| x.id == sync.server) {
                 faulty = true;
                 warn!(
                     "Sync with ID {} points to an undefined server.",
                     sync.server
                 );
-            }
-        }
-
-        if self.data.current.is_some() {
-            if self.get_server_by_id(&self.data.current.as_ref().unwrap()).is_none() {
-                warn!("Field \"current\" in config points to an non-existing server. Remove flag.");
-                self.data.current = None;
             }
         }
 
@@ -217,20 +204,6 @@ impl Config {
 
     pub fn get_data(&self) -> &ClientConfig {
         &self.data
-    }
-
-    pub fn set_current_server(&mut self, server_id: &str) {
-        self.data.current = Some(server_id.to_string());
-
-        self.flush();
-    }
-
-    pub fn get_current_server(&self) -> Option<ClientServer> {
-        if self.data.current.is_none() {
-            return None;
-        }
-
-        self.get_server_by_id(&self.data.current.as_ref().unwrap())
     }
 
     pub fn add_server(&mut self, server_name: String, server: ServerInfo) -> Option<String> {
@@ -285,8 +258,14 @@ impl Config {
             .find(|x| x.id == server_id)
     }
 
-    pub fn add_sync(&self, sync_name: &str, mut start: Utf8PathBuf) -> Option<String> {
+    pub fn get_server_by_endpoint(&self, endpoint: &str) -> Option<ClientServer> {
+        self.data.clone().server.into_iter()
+            .find(|x| x.endpoint == endpoint)
+    }
+
+    pub fn add_sync(&mut self, sync_name: &str, server_id: String, mut start: Utf8PathBuf) -> Option<String> {
         if self.get_sync_by_name(sync_name).is_some() {
+            error!("A sync with this name already exists.");
             return None;
         }
 
@@ -296,7 +275,7 @@ impl Config {
         }
 
         if !start.is_file() {
-            error!("Selected path points to a non-file. Maybe a folder or link?");
+            error!("Selected path points to something that isn't a file. Maybe a folder or a link?");
             exit(1);
         }
 
@@ -304,7 +283,7 @@ impl Config {
             Some(ex) => {
                 if ex != "jar" {
                     // Try again but without extension
-                    return self.add_sync(sync_name, start.with_extension(""));
+                    return self.add_sync(sync_name, server_id, start.with_extension(""));
                 }
 
                 // File points to a JAR-file.
@@ -345,8 +324,22 @@ impl Config {
         }
 
         let new_id = Uuid::new_v4();
+        let mut location = final_path.clone();
+        location.pop();
 
-        return None;
+        let config_entry = ClientSync {
+            id: new_id.to_string(),
+            name: sync_name.to_string(),
+            location: location.to_string(),
+            server: server_id,
+            share: true,
+            start: final_path.to_string()
+        };
+
+        self.data.sync.push(config_entry);
+        self.flush();
+
+        None
     }
     
     pub fn get_sync_by_name(&self, sync_name: &str) -> Option<ClientSync> {
@@ -376,15 +369,15 @@ impl Config {
                 match File::create(&self.config_path) {
                     Ok(mut file) => match file.write_all(pretty.as_bytes()) {
                         Ok(_) => match file.flush() {
-                            Ok(_) => { return Some(()); }
+                            Ok(_) => { Some(()) }
                             Err(error) => {
                                 error!("Error on flushing buffer to file: {}", error);
-                                return None;
+                                None
                             }
                         },
                         Err(error) => {
                             error!("Error on writing buffer to file: {}", error);
-                            return None;
+                            None
                         }
                     },
 
@@ -393,14 +386,14 @@ impl Config {
                             "Config file ({}) couldn't be opened: {}",
                             &self.config_path, error
                         );
-                        return None;
+                        None
                     }
                 }
             }
             Err(error) => {
                 error!("Couldn't create JSON string: {}", error);
-                return None;
+                None
             }
-        };
+        }
     }
 }

@@ -1,13 +1,20 @@
+use std::path::Path;
+use std::process::exit;
 use std::sync::{Arc, Mutex};
 
-use paris::{info, success};
-use rocket::{fairing::AdHoc, State, response::{content::Json, self}};
+use actix_web::web::Data;
+use paris::{ error};
 use serde::{Serialize, Deserialize};
 
+use actix_web::{HttpServer, get, App, Responder, HttpRequest};
 use crate::database::{Database, DatabaseSynced};
+use crate::env::get_minecraft_save_path;
+
+use super::cache::Cache;
+use super::middleware::ClientSeenFactory;
 
 pub struct HttpHandler {
-    database: Arc<Mutex<Database>>,
+    database: Database,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -17,67 +24,60 @@ pub struct ReturnSync {
 
 impl HttpHandler {
     pub async fn new(database: Database) -> Self {
-        Self { database: Arc::new(Mutex::new(database)) }
+        let saves_path = get_minecraft_save_path();
+        let saves_dir = Path::new(&saves_path);
+        if !saves_dir.exists() {
+            error!("Minecraft saves directory doesn't exist. Please create directory at {}", saves_path);
+            exit(1);
+        }
+
+        if !saves_dir.is_dir() {
+            error!("MINECRAFT_SAVES points to a non-directory but is has to be a directory.");
+            exit(1);
+        }
+
+        Self { database }
     }
 
     pub async fn listen(&self) {
-        /*let log = warp::log::custom(|req| {
-            let mut db_clone = self.database;
-
-            let ip = req.remote_addr().unwrap().ip().to_string();
-            db_clone.seen_client(ip.as_str());
-            db_clone.flush();
-
-            let client = db_clone.get_client_by_ip(&ip);
-
-            info!("{} ({}) -- {} {}",
-                ip,
-                if client.is_some() { client.unwrap().name.clone() } else { String::from("") },
-                req.method(),
-                req.path()
-            );
-        });*/
-
-        start(self.database.clone());
-
-        success!("Listening on port 80 ...");
+        start(self.database.clone()).await;
     }
 }
 
-fn start(db: Arc<Mutex<Database>>) {
-    let db_clone = db.lock().unwrap().clone();
+async fn start(db: Database) {
+    let _ = HttpServer::new(move || {
+        let db_clone = db.clone();
+        let data = Arc::new(Mutex::new(Cache::new()));
 
-    rocket::ignite()
-    .attach(AdHoc::on_request("Last seen & logging", move |req, _| {
-        let mut db_clone = db.lock().unwrap();
-
-        let ip = req.client_ip().unwrap().to_string();
-        db_clone.seen_client(ip.as_str());
-        db_clone.flush();
-
-        let client = db_clone.get_client_by_ip(&ip);
-
-        info!(
-            "{} ({}) -- {} {}",
-            ip,
-            if client.is_some() {
-                client.unwrap().name.clone()
-            } else {
-                String::from("")
-            },
-            req.method(),
-            req.uri().path()
-        );
-    }))
-    .manage(db_clone)
-    .mount("/", routes![hello])
-    .launch();
+        App::new()
+            .service(get_status)
+            .service(set_status)
+            .app_data(Data::new(db_clone.clone()))
+            .wrap(ClientSeenFactory::new(db_clone))
+    })
+    .bind(("127.0.0.1", 8080))
+    .unwrap()
+    .run()
+    .await;
 }
 
 #[get("/")]
-fn hello() -> &'static str {
-    "ok"
+async fn get_root(req: HttpRequest, db: Data<Database>) -> impl Responder {
+    String::new()
 }
+
+#[get("/<sync>")]
+async fn get_status(req: HttpRequest, cache: Data<Cache>, sync: String) -> impl Responder {
+    format!("{}", cache.can_sync(req.connection_info().peer_addr().unwrap().to_string(), sync))
+}
+
+#[get("/<sync>/allow")]
+async fn set_status(req: HttpRequest, cache: Data<Cache>, sync: String) -> impl Responder {
+    // cache.borrow_mut().add_sync(req.connection_info().peer_addr().unwrap().to_string(), sync);
+
+    String::new()
+}
+
 
 /*#[get("/sync")]
 fn sync_list(db: State<Database>) -> Json<ReturnSync> {

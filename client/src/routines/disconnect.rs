@@ -1,4 +1,4 @@
-use std::{process::{exit, Command}, fs::{remove_file}};
+use std::{process::{exit, Command}, fs::remove_file};
 
 use paris::{error, warn, success};
 
@@ -18,7 +18,7 @@ impl Disconnect {
         }
 
         // Instruct WireGuard to disconnect using wireguard-tools
-        match Command::new("wg-quick").args(["down", &path.to_string()]).spawn() {
+        match Command::new("wg-quick").args(["down", path.as_ref()]).spawn() {
             Ok(mut child) => {
                 if !child.wait().unwrap().success() {
                     error!("WireGuard failed to destroy your tunnel. See possible errors above.");

@@ -5,7 +5,7 @@ mod config;
 mod sync;
 mod utils;
 
-use std::{process::{exit}};
+use std::process::exit;
 
 use camino::Utf8PathBuf;
 use cfg_if::cfg_if;
@@ -13,11 +13,10 @@ use cfg_if::cfg_if;
 use clap::{Parser, Args, Subcommand};
 use config::Config;
 use nix::unistd::Uid;
-use paris::{error};
+use paris::error;
 use prerequisites::Prerequisites;
-use routines::{client_info::ClientInfo, import::Import, connect::Connect, disconnect::Disconnect};
-
-use crate::{platform::permission_check, routines::init::Init};
+use platform::permission_check;
+use routines::{client_info::ClientInfo, import::Import, connect::Connect, disconnect::Disconnect, init::Init};
 
 #[derive(Parser, Debug)]
 #[clap(author = "Nicolas Klier aka Mondei1", version, about = "Tunnel & share your Minecraft server with friends.", long_about = None)]
@@ -83,15 +82,9 @@ async fn main() {
     let mut conf = Config::new(args.global_opts.config_file.clone());
     conf.verify_integrity();
 
-    cfg_if! {
-        if #[cfg(unix)] {
-            permission_check();
-        }
-    }
-
     // Try to install WireGuard module.
     let setup = Prerequisites::new();
-    setup.check();
+    setup.check().await;
 
     match args.command {
         Action::ClientInfo => {
@@ -99,22 +92,26 @@ async fn main() {
             ci.print();
         },
         Action::Import { path, name } => {
-            let _ = Import::execute(conf, name, path);
+            Import::execute(conf, name, path);
         },
         Action::Connect { name } => {
+            permission_check();
+            
             let server = conf.get_server_by_name(&name);
             if server.is_none() {
                 error!("Server {} doesn't exist.", name);
                 exit(1);
             }
 
-            let _ = Connect::execute(conf, server.unwrap()).await;
+            Connect::execute(conf, server.unwrap()).await;
         },
         Action::Disconnect => {
-            let _ = Disconnect::execute();
+            permission_check();
+            
+            Disconnect::execute();
         },
         Action::Init { name, start_file } => {
-            let _ = Init::execute(conf, name).await;
+            Init::execute(conf, name, start_file).await;
         }
         _ => {
             error!("This command is not yet supported. Sorry :c");
@@ -126,7 +123,7 @@ async fn main() {
 fn is_root() -> bool {
     cfg_if! {
         if #[cfg(unix)] {
-            return Uid::effective().is_root();
+            Uid::effective().is_root()
         }
     }
 }

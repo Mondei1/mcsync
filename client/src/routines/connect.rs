@@ -13,7 +13,7 @@ use crate::{config::{ClientServer, Config}, platform::{get_wg_config, does_wg_in
 pub struct Connect {}
 
 impl Connect {
-    pub async fn execute(mut config: Config, server: ClientServer) {
+    pub async fn execute(config: Config, server: ClientServer) {
         let template = format!(
             r"
 ###
@@ -100,7 +100,7 @@ PersistentKeepalive = 25
                 }
 
                 // Instruct WireGuard to connect using wireguard-tools
-                match Command::new("wg-quick").args(["up", &path.to_string()]).spawn() {
+                match Command::new("wg-quick").args(["up", path.as_ref()]).spawn() {
                     Ok(mut child) => {
                         if !child.wait().unwrap().success() {
                             error!("WireGuard failed to setup your tunnel. See possible errors above.");
@@ -123,7 +123,6 @@ PersistentKeepalive = 25
                     Ok(res) => {
                         if res.status() == 200 {
                             success!("Connected with {}. Have fun playing!", &server.name);
-                            config.set_current_server(&server.id);
                         } else {
                             error!("Connection succeeded but server backend returned with {}", res.status());
                         }

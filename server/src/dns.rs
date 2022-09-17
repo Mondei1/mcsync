@@ -1,5 +1,3 @@
-use std::path::Path;
-use std::process::exit;
 use std::str::FromStr;
 use std::{fs::File, io::Write, fs::remove_file, time::Duration};
 
@@ -8,11 +6,11 @@ use domain::base::{Dname, Rtype};
 use domain::base::octets::Octets512;
 use domain::rdata::A;
 use domain::resolv::{StubResolver, stub::conf::{ResolvConf, ResolvOptions, ServerConf}};
-use log::{warn};
+use log::warn;
 use paris::{error, info, success, log};
 
 use crate::env;
-use crate::{docker::DockerManager};
+use crate::docker::DockerManager;
 
 pub struct DNSManager {
     docker_instance: DockerManager,
@@ -46,7 +44,7 @@ impl DNSManager {
     }
 
     pub async fn query(&self, target: &str) -> Option<String> {
-        if self.dns_server == "" {
+        if self.dns_server.is_empty() {
             return None;
         }
 
@@ -75,7 +73,7 @@ impl DNSManager {
                 
                 match lookup.answer() {
                     Ok(answer) => {
-                        for record in answer.limit_to::<A>() {
+                        if let Some(record) = answer.limit_to::<A>().next() {
                             let ip = record.unwrap().data().to_owned();
 
                             return Some(ip.addr().to_string());
@@ -97,11 +95,9 @@ impl DNSManager {
 
     // Setting `service_domain` to true means you explicitly state that you want to set reserved domains.
     pub async fn set_or_update_record(&self, name: &str, new_ip: &str, service_domain: bool) -> Option<()> {
-        if !service_domain {
-            if name == "backend" {
-                warn!("Cannot create game server domain for reserved names like \"backend.mc\".");
-                return None;
-            }
+        if !service_domain && name == "backend" {
+            warn!("Cannot create game server domain for reserved names like \"backend.mc\".");
+            return None;
         }
 
         // Check if DNS already resolves with the desired IP.
@@ -109,7 +105,7 @@ impl DNSManager {
 
         let record = format!(
             "server:
-\tlocal-data: \"{}.mc.	IN A {}\"\n
+\tlocal-data: \"{}.mc.	IN A {}\"
 \tlocal-data-ptr: \"{}	{}.mc\"",
                 name, new_ip, new_ip, name
         );

@@ -112,3 +112,19 @@ pub fn get_network_name() -> String {
         }
     }
 }
+
+pub fn get_minecraft_save_path() -> String {
+    match std::env::var("MINECRAFT_SAVES") {
+        Ok(file_path) => {
+            if !Path::new(&file_path).exists() {
+                error!("Directory {} in MINECRAFT_SAVES doesn't exist.", &file_path);
+                exit(1);
+            }
+            
+            file_path
+        },
+        Err(_) => {
+            String::from("/saves")
+        }
+    }
+}
