@@ -37,7 +37,7 @@ data-encoding = "2.3.2"
 reqwest = { version = "0.11.11", features = ["json", "stream"] }
 
 # Better CLI
-clap = { version = "3.2.15", features = ["derive"] }
+clap = { version = "4.0.14", features = ["derive"] }
 camino = "1.0.9"
 humansize = "2.0.0"
 

@@ -39,14 +39,15 @@ reqwest = { version = "0.11.11", features = ["blocking"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.82"
 url = "2.2.2"
-actix-web = "4"
+actix-web = "4.2.1"
+dav-server = { version = "0.5.1", features = ["actix-compat"]  }
 
 # Docker interaction
 bollard = "0.13.0"
 
 # Network & DNS related crates
 ipnet = "2.5.0"
-domain = { version = "0.6.1", features = ["resolv", "bytes"] }
+domain = { version = "0.7.1", features = ["resolv", "bytes"] }
 
 [build-dependencies]
 shadow-rs = "0.16.1"

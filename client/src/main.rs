@@ -21,8 +21,16 @@ use routines::{client_info::ClientInfo, import::Import, connect::Connect, discon
 #[derive(Parser, Debug)]
 #[clap(author = "Nicolas Klier aka Mondei1", version, about = "Tunnel & share your Minecraft server with friends.", long_about = None)]
 struct App {
-    #[clap(flatten)]
-    global_opts: GlobalOpts,
+    #[clap(default_value_t = platform::get_config_directory(), long, short, global = true)]
+    config_file: Utf8PathBuf,
+    
+    #[clap(default_value_t = false, global = true, long, short)]
+    /// mcsync will become very chatty.
+    verbose: bool,
+
+    #[clap(default_value_t = false, global = true, long, short)]
+    // mcsync will directly connect to the backend without WireGuard.
+    local: bool,
 
     #[clap(subcommand)]
     command: Action,
@@ -30,6 +38,9 @@ struct App {
 
 #[derive(Debug, Subcommand)]
 enum Action {
+    /// Execute this command first. It will guide though the post-install 
+    Install,
+
     /// Connect to a already set up mcsync server.
     Connect {
         // Name of server to connect with.
@@ -64,29 +75,18 @@ enum Action {
     }
 }
 
-#[derive(Debug, Args)]
-struct GlobalOpts {
-
-    #[clap(default_value_t = platform::get_config_directory(), long, short, global = true)]
-    config_file: Utf8PathBuf,
-    
-    #[clap(parse(from_occurrences), global = true, long, short)]
-    /// Declare how much mcsync should talk.
-    verbose: usize
-}
-
 #[tokio::main]
 async fn main() {
     // Modules are installed and available. Next, we have to parse the command line.
     let args: App = App::parse();
-    let mut conf = Config::new(args.global_opts.config_file.clone());
+    let mut conf = Config::new(args.config_file.clone());
     conf.verify_integrity();
 
-    // Try to install WireGuard module.
-    let setup = Prerequisites::new();
-    setup.check().await;
-
     match args.command {
+        Action::Install => {
+            let setup = Prerequisites::new();
+            setup.check().await;
+        }
         Action::ClientInfo => {
             let ci = ClientInfo::new(conf);
             ci.print();
@@ -95,7 +95,9 @@ async fn main() {
             Import::execute(conf, name, path);
         },
         Action::Connect { name } => {
-            permission_check();
+            if !args.local {
+                permission_check();
+            }
             
             let server = conf.get_server_by_name(&name);
             if server.is_none() {
@@ -103,7 +105,7 @@ async fn main() {
                 exit(1);
             }
 
-            Connect::execute(conf, server.unwrap()).await;
+            Connect::execute(conf, server.unwrap(), !args.local).await;
         },
         Action::Disconnect => {
             permission_check();

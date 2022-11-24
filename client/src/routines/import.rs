@@ -10,7 +10,7 @@ pub struct Import {
 impl Import {
     pub fn execute(mut config: Config, server_name: String, target_file: Utf8PathBuf) {
         if !target_file.exists() {
-            error!("Selected server information file doesn't exist.");
+            error!("Selected server information file doesn't exist at {}", target_file.as_path().to_string());
             exit(1);
         }
 

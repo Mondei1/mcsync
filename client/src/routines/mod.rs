@@ -3,3 +3,4 @@ pub mod import;
 pub mod connect;
 pub mod disconnect;
 pub mod init;
+pub mod install;

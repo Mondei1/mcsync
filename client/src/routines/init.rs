@@ -39,7 +39,7 @@ impl Init {
         sync_file.push(".sync");
 
         if sync_file.exists() {
-            info!("This server is already synced.");
+            info!("This server is already synced. Execute 'mcsync push' to manually sync the server files.");
             return;
         }
 

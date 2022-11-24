@@ -5,9 +5,9 @@ use std::{
 
 use cfg_if::cfg_if;
 
-use paris::{error, info};
+use paris::{error, info, success};
 
-use crate::utils::{child::spawn_child, rclone};
+use crate::{utils::{child::spawn_child, rclone}, platform::get_rclone_executable};
 
 pub struct Prerequisites {}
 
@@ -55,9 +55,19 @@ impl Prerequisites {
         }
 
         // 2. Check for rclone
-        if rclone::check_for_update().await {
-            rclone::install_latest_version().await;
-        }
+        match rclone::get_installed_version() {
+            Some(version) => {
+                if rclone::check_for_update().await {
+                    rclone::install_latest_version().await;
+                } else {
+                    success!("Newest rlcone version {} is already installed. It's located at {}", version, get_rclone_executable());
+                }
+            },
+            None => {
+                error!("rclone is not yet installed.");
+                rclone::install_latest_version().await;
+            }
+        };
     }
 }
 
@@ -69,7 +79,7 @@ pub fn is_wireguard_module_available() -> bool {
                     if std::str::from_utf8(&o.stderr).unwrap().contains("ERROR:") {
                         error!("WireGuard kernel module is unavailable.");
                     } else {
-                        // success!("WireGuard module is available.");
+                        success!("WireGuard module is already available.");
                         return true;
                     }
                 },
@@ -95,7 +105,7 @@ pub fn install_wireguard_module(package_manager: PackageManager) -> bool {
                     return run_package_manager("dnf", ["-y", "-q", "install", "wireguard-tools"]);
                 },
                 PackageManager::Pacman => {
-                    return run_package_manager("pacman", ["--noconfirm", "-qq", "-S", "wireguard-toolss"]);
+                    return run_package_manager("pacman", ["--noconfirm", "-qq", "-S", "wireguard-tools "]);
                 },
                 PackageManager::Apk => {
                     return run_package_manager("apk", ["-q", "--no-progress", "install", "wireguard"]);

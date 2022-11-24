@@ -2,7 +2,11 @@ use std::path::Path;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
 
-use actix_web::web::Data;
+use actix_web::web::{Data, resource};
+use dav_server::{DavHandler, DavConfig};
+use dav_server::actix::{DavRequest, DavResponse};
+use dav_server::fakels::FakeLs;
+use dav_server::localfs::LocalFs;
 use paris::{ error};
 use serde::{Serialize, Deserialize};
 
@@ -44,18 +48,35 @@ impl HttpHandler {
     }
 }
 
+pub async fn dav_handler(req: DavRequest, davhandler: Data<DavHandler>) -> DavResponse {
+    if let Some(prefix) = req.prefix() {
+        let config = DavConfig::new().strip_prefix(prefix);
+        davhandler.handle_with(config, req.request).await.into()
+    } else {
+        davhandler.handle(req.request).await.into()
+    }
+}
+
 async fn start(db: Database) {
     let _ = HttpServer::new(move || {
         let db_clone = db.clone();
         let data = Arc::new(Mutex::new(Cache::new()));
 
+        let dav_server = DavHandler::builder()
+            .filesystem(LocalFs::new("/tmp", false, false, false))
+            .locksystem(FakeLs::new())
+            .build_handler();
+
         App::new()
-            .service(get_status)
-            .service(set_status)
+            //.service(get_root)
+            //.service(get_status)
+            //.service(set_status)
+            .service(resource("/dav/{tail:.*}").to(dav_handler))
             .app_data(Data::new(db_clone.clone()))
+            .app_data(Data::new(dav_server.clone()))
             .wrap(ClientSeenFactory::new(db_clone))
     })
-    .bind(("127.0.0.1", 8080))
+    .bind(("0.0.0.0", 8080))
     .unwrap()
     .run()
     .await;
@@ -63,7 +84,7 @@ async fn start(db: Database) {
 
 #[get("/")]
 async fn get_root(req: HttpRequest, db: Data<Database>) -> impl Responder {
-    String::new()
+    String::from("mcsync server v0.1")
 }
 
 #[get("/<sync>")]
